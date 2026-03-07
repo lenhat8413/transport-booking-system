@@ -71,10 +71,6 @@ exports.forgotPassword = async (req, res) => {
     const query = email ? { email } : { phone };
     const user = await User.findOne(query);
 
-    if (!user) {
-      return res.status(404).json({ message: "Account not found." });
-    }
-
     // Sinh OTP 6 chữ số an toàn
     const otp = String(crypto.randomInt(100000, 1000000));
 
@@ -107,7 +103,8 @@ exports.forgotPassword = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "If an account is found, an OTP has been sent to the email address associated with this account.",
+      message:
+        "If an account is found, an OTP has been sent to the email address associated with this account.",
     });
   } catch (err) {
     console.error("[forgotPassword]", err);
