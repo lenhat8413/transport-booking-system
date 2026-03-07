@@ -75,7 +75,7 @@ exports.forgotPassword = async (req, res) => {
     }
 
     // Sinh OTP 6 chữ số an toàn
-    const otp = String(crypto.randomInt(100000, 999999));
+    const otp = String(crypto.randomInt(100000, 1000000));
 
     // Hash OTP trước khi lưu
     const otpHash = await bcrypt.hash(otp, 10);
