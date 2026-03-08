@@ -58,18 +58,17 @@ exports.loginUser = async (req, res) => {
 
 // ─── Quên mật khẩu: sinh OTP và gửi qua email ────────────────────────────────
 exports.forgotPassword = async (req, res) => {
-  const { email, phone } = req.body;
+  const { email } = req.body;
 
-  if (!email && !phone) {
+  if (!email) {
     return res
       .status(400)
-      .json({ message: "Email or phone number is required." });
+      .json({ message: "Email is required." });
   }
 
   try {
-    // Tìm tài khoản theo email hoặc số điện thoại
-    const query = email ? { email } : { phone };
-    const user = await User.findOne(query);
+    // Tìm tài khoản theo email
+    const user = await User.findOne({ email });
 
     // Sinh OTP 6 chữ số an toàn
     const otp = String(crypto.randomInt(100000, 1000000));
