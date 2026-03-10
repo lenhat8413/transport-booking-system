@@ -30,7 +30,7 @@ app.use("/api/health", healthRoutes); // Kiểm tra tình trạng server
 app.use("/api/search", searchRoutes);
 
 // Các route yêu cầu xác thực người dùng (Protected Routes)
-app.use("/api/bookings", authMiddleware, bookingRoutes); // Đặt vé, thanh toán
+app.use("/api/bookings", bookingRoutes); // Đặt vé, thanh toán (Cho phép cả vãng lai và user đăng nhập)
 app.use("/api/seats", authMiddleware, seatRoutes); // Quản lý ghế
 
 const passengerRoutes = require("./routes/passenger.routes");
