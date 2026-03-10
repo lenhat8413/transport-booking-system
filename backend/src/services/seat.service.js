@@ -88,6 +88,14 @@ async function getSeatMap(tripId) {
 
 	if (flight) {
 		const seats = await Seat.find({ flight_id: tripId }).sort("seat_number");
+		if (!seats || seats.length === 0) {
+			throw new SeatServiceError(
+				"Không có dữ liệu ghế cho chuyến đi này.",
+				404,
+				"NO_SEAT_DATA",
+			);
+		}
+
 		return {
 			tripType: "flight",
 			tripId: flight._id,
@@ -102,15 +110,25 @@ async function getSeatMap(tripId) {
 	}
 
 	const trainTrip = await TrainTrip.findById(tripId);
-	if (!trainTrip) throw new SeatServiceError("Trip not found.", 404);
+	if (!trainTrip)
+		throw new SeatServiceError("Trip not found", 404, "TRIP_NOT_FOUND");
 
 	const carriages = await TrainCarriage.find({ train_trip_id: tripId }).sort(
 		"carriage_number",
 	);
+
 	const carriageIds = carriages.map((c) => c._id);
 	const seats = await Seat.find({ carriage_id: { $in: carriageIds } }).sort(
 		"seat_number",
 	);
+
+	if (!seats || seats.length === 0) {
+		throw new SeatServiceError(
+			"No seat data for this trip.",
+			404,
+			"NO_SEAT_DATA",
+		);
+	}
 
 	return {
 		tripType: "train",
