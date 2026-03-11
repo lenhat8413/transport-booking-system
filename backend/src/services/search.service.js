@@ -3,6 +3,11 @@ const Airport = require('../models/airports.model');
 const Airline = require('../models/airlines.model');
 const Seat = require('../models/seats.model'); // Import Seat để đếm số ghế trống
 
+
+const TrainTrip = require('../models/trainTrips.model');
+const TrainStation = require('../models/trainStations.model');
+const Train = require('../models/trains.model');
+
 const findFlights = async ({ origin, destination, departureDate, passengers = 1, sort, page = 1, limit = 20 }) => {
   // 1. Kiểm tra đầu vào hợp lệ
   if (!origin || !destination || !departureDate) {
@@ -96,4 +101,62 @@ const findFlights = async ({ origin, destination, departureDate, passengers = 1,
   };
 };
 
-module.exports = { findFlights };
+
+const findTrainTrips = async ({ origin, destination, departureDate, passengers = 1, sort, page = 1, limit = 20 }) => {
+  // 1. Kiểm tra thiếu tham số
+  if (!origin || !destination || !departureDate) {
+    const error = new Error('Missing search parameters');
+    error.status = 400;
+    error.code = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // 2.  Kiểm tra ga trùng nhau 
+  if (origin.trim().toUpperCase() === destination.trim().toUpperCase()) {
+    const error = new Error('Ga đi và ga đến không được trùng nhau.');
+    error.status = 400;
+    error.code = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // 3. Validate ngày không hợp lệ
+  const searchDate = new Date(departureDate);
+  if (isNaN(searchDate.getTime())) {
+    const error = new Error('Ngày khởi hành không hợp lệ');
+    error.status = 400;
+    error.code = 'INVALID_DATE';
+    throw error;
+  }
+
+  // 4. Tìm Ga đi và Ga đến trong DB
+  const [originStation, destStation] = await Promise.all([
+    TrainStation.findOne({ name: origin }), 
+    TrainStation.findOne({ name: destination })
+  ]);
+
+  // Nếu không tìm thấy ga thì mới trả về mảng rỗng (404 ở Controller)
+  if (!originStation || !destStation) return { trips: [], total: 0, page, limit };
+
+  const startOfDay = new Date(searchDate).setUTCHours(0,0,0,0);
+  const endOfDay = new Date(searchDate).setUTCHours(23,59,59,999);
+
+  // 5. Truy vấn chuyến tàu
+  const trainTrips = await TrainTrip.find({
+    departure_station_id: originStation._id,
+    arrival_station_id: destStation._id,
+    departure_time: { $gte: startOfDay, $lte: endOfDay }
+  })
+  .populate('train_id', 'train_number name')
+  .populate('departure_station_id', 'name city')
+  .populate('arrival_station_id', 'name city')
+  .lean();
+
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const paginatedTrips = trainTrips.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+  return { trips: paginatedTrips, total: trainTrips.length, page: pageNum, limit: limitNum };
+};
+
+
+module.exports = { findFlights, findTrainTrips };
