@@ -33,4 +33,7 @@ router.get("/list", bookingController.getAllBookings);
 // Tạo API Đường hầm Gửi Mã Giảm Giá (Cho phép Vãng lai xài luôn nhờ optionalAuth)
 router.post("/apply-voucher", optionalAuth, bookingController.applyVoucher);
 
+// Xem chi tiết giỏ hàng Checkout
+router.get("/:bookingId/details", optionalAuth, bookingController.getBookingById);
+
 module.exports = router;
