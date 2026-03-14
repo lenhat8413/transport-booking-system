@@ -20,7 +20,7 @@ exports.createBooking = async (req, res) => {
 
     let total_amount = 0;
 
-    // Map để tra cứu giá từng ghế nhanh hơn (seat_id → effective_price)
+    // Map để tra cứu giá từng ghế nhanh hơn (seat_id → final_price)
     const seatPriceMap = {};
 
     for (let seat of seatDocs) {
@@ -30,7 +30,7 @@ exports.createBooking = async (req, res) => {
 
       // 2. Query bảng giá từ FlightFare theo chuyến bay + hạng ghế
       // Chỉ áp dụng cho FLIGHT; TRAIN dùng base_price của TrainCarriage
-      let seatPrice;
+      let seatPrice = 0;
 
       if (booking_type === 'FLIGHT') {
         const fare = await FlightFare.findOne({
@@ -49,8 +49,7 @@ exports.createBooking = async (req, res) => {
         const effectivePrice = fare.promo_price != null ? fare.promo_price : fare.base_price;
         seatPrice = effectivePrice + (seat.price_modifier || 0);
       } else {
-        // TRAIN: giữ nguyên logic cũ (TrainCarriage.base_price được tính ngoài)
-        // Tạm giữ price_modifier của ghế tàu
+        // TRAIN
         seatPrice = seat.price_modifier || 0;
       }
 
@@ -71,10 +70,9 @@ exports.createBooking = async (req, res) => {
 
     await newBooking.save();
 
-    // 4. Tạo Ticket với final_price đúng từ bảng giá FlightFare
+    // 4. Tạo Ticket với final_price đúng từ bảng giá Tra cứu được
     const ticketPromises = passengers.map(async (p) => {
-      const thisSeat = seatDocs.find(s => s._id.toString() === p.seat_id.toString());
-      const finalPrice = thisSeat ? seatPriceMap[thisSeat._id.toString()] : 0;
+      const finalPrice = seatPriceMap[p.seat_id.toString()] || 0;
 
       return Ticket.create({
         booking_id: newBooking._id,
@@ -260,27 +258,75 @@ exports.applyVoucher = async (req, res) => {
 };
 
 
-// Lấy chi tiết 1 booking
+// ─── KAN-213: Xem lại toàn bộ thông tin Booking trước khi Checkout ──────────
 exports.getBookingById = async (req, res) => {
   try {
     const { bookingId } = req.params;
 
-    const booking = await Booking.findById(bookingId);
+    // KAN-214 & KAN-215: Tìm kiếm Booking và kiểm tra tính hợp lệ
+    const booking = await Booking.findById(bookingId).lean();
 
     if (!booking) {
-      return res.status(404).json({ message: "Booking not found!" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy thông tin chuyến đi (Booking)!" });
     }
 
-    // kiểm tra quyền truy cập
-    if (booking.user_id.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "You are not allowed to view this booking",
+    const requestUserId = req.user && req.user.userId ? req.user.userId : null;
+    if (booking.user_id && booking.user_id.toString() !== requestUserId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền truy cập thông tin Booking này!" });
+    }
+
+    // KAN-216: Gom thông tin Hành Khách & Ghế ngồi từ bảng Tickets
+    const tickets = await Ticket.find({ booking_id: booking._id })
+      .populate({
+        path: 'seat_id',
+        select: 'seat_number class price_modifier status'
+      })
+      .lean();
+
+    let passengerDetails = [];
+    let totalDiscount = 0;
+
+    // KAN-217: Ghép nối Dữ liệu Phụ (Tính năng Voucher Tương lai)
+    if (tickets && tickets.length > 0) {
+      passengerDetails = tickets.map(ticket => {
+        return {
+          ticket_id: ticket._id,
+          passenger_name: ticket.passenger_name,
+          id_card: ticket.passenger_id_card,
+          seat_info: ticket.seat_id ? {
+            id: ticket.seat_id._id,
+            number: ticket.seat_id.seat_number,
+            class: ticket.seat_id.class,
+            additional_fee: ticket.seat_id.price_modifier
+          } : null,
+          final_price: ticket.final_price
+        };
       });
     }
 
-    res.status(200).json({ booking });
+    // KAN-218: Gói ghém tất cả Data trả về cho Giao Diện Xong Xuôi
+    res.status(200).json({
+      success: true,
+      data: {
+        booking_summary: {
+          id: booking._id,
+          code: booking.booking_code,
+          type: booking.booking_type,
+          trip_id: booking.trip_id,
+          status: booking.status,
+          created_at: booking.created_at,
+          expires_at: booking.expires_at,
+        },
+        financials: {
+          total_amount: booking.total_amount, // Đã tự gánh tiền trừ từ hàm Voucher trước đó
+          discount_applied: totalDiscount
+        },
+        passengers: passengerDetails
+      }
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Internal server error!" });
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi tải thông tin xác nhận!" });
   }
 };

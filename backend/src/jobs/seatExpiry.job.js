@@ -40,7 +40,8 @@ async function releaseExpiredSeats() {
       ]
     });
 
-    if (expiredSeats.length === 0) return;
+    if (standaloneSeats.length > 0) {
+      seatsToReleaseForSocket = seatsToReleaseForSocket.concat(standaloneSeats);
 
     // Cập nhật hàng loạt trạng thái ghế về AVAILABLE
     const result = await Seat.updateMany(
@@ -50,7 +51,7 @@ async function releaseExpiredSeats() {
           status: "AVAILABLE",
           held_by: null,
           held_by_booking_id: null,
-          hold_expired_at: null,
+          hold_expired_at: { $lt: now },
         },
       }
     );
