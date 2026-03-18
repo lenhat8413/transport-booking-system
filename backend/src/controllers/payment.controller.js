@@ -56,6 +56,13 @@ exports.createVnpayUrl = async (req, res) => {
         let expireDate = new Date(date.getTime() + 15 * 60000);
         let vnpExpireDate = getVNPayDate(expireDate);
 
+        let finalReturnUrl = returnUrl;
+        if (returnUrl.includes('?')) {
+            finalReturnUrl += `&bookingId=${booking._id.toString()}`;
+        } else {
+            finalReturnUrl += `?bookingId=${booking._id.toString()}`;
+        }
+
         let vnp_Params = {
             'vnp_Version': '2.1.0',
             'vnp_Command': 'pay',
@@ -66,7 +73,7 @@ exports.createVnpayUrl = async (req, res) => {
             'vnp_OrderInfo': `Thanh toan don hang ${booking.booking_code}`,
             'vnp_OrderType': 'other',
             'vnp_Amount': booking.total_amount * 100,
-            'vnp_ReturnUrl': returnUrl,
+            'vnp_ReturnUrl': finalReturnUrl,
             'vnp_IpAddr': ipAddr,
             'vnp_CreateDate': createDate,
             'vnp_ExpireDate': vnpExpireDate
@@ -165,12 +172,16 @@ exports.vnpayReturn = async (req, res) => {
         let vnp_Params = req.query;
         const secureHash = vnp_Params['vnp_SecureHash'];
 
-        delete vnp_Params['vnp_SecureHash'];
-        delete vnp_Params['vnp_SecureHashType'];
+        let signDataParams = {};
+        for (let key in vnp_Params) {
+            if (key.startsWith('vnp_') && key !== 'vnp_SecureHash' && key !== 'vnp_SecureHashType') {
+                signDataParams[key] = vnp_Params[key];
+            }
+        }
 
-        vnp_Params = sortObject(vnp_Params);
+        signDataParams = sortObject(signDataParams);
         const secretKey = env.vnpHashSecret;
-        const signData = Object.keys(vnp_Params).map(key => `${key}=${vnp_Params[key]}`).join('&');
+        const signData = Object.keys(signDataParams).map(key => `${key}=${signDataParams[key]}`).join('&');
         const hmac = crypto.createHmac("sha512", secretKey);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
 
@@ -219,12 +230,16 @@ exports.vnpayIpn = async (req, res) => {
         let paymentId = vnp_Params['vnp_TxnRef'];
         let rspCode = vnp_Params['vnp_ResponseCode'];
 
-        delete vnp_Params['vnp_SecureHash'];
-        delete vnp_Params['vnp_SecureHashType'];
+        let signDataParams = {};
+        for (let key in vnp_Params) {
+            if (key.startsWith('vnp_') && key !== 'vnp_SecureHash' && key !== 'vnp_SecureHashType') {
+                signDataParams[key] = vnp_Params[key];
+            }
+        }
 
-        vnp_Params = sortObject(vnp_Params);
+        signDataParams = sortObject(signDataParams);
         const secretKey = env.vnpHashSecret;
-        const signData = Object.keys(vnp_Params).map(key => `${key}=${vnp_Params[key]}`).join('&');
+        const signData = Object.keys(signDataParams).map(key => `${key}=${signDataParams[key]}`).join('&');
         const hmac = crypto.createHmac("sha512", secretKey);
         const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
 
