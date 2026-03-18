@@ -13,8 +13,7 @@ const paymentSchema = new mongoose.Schema({
   },
   transaction_id: {
     type: String,
-    unique: true,
-    sparse: true // Cho phép null tạm thời khi VNPay chưa trả về mã giao dịch
+    default: null // Cho phép rỗng cho đến khi cổng thanh toán trả kết quả
   },
   amount: { type: Number, required: true },
   status: {
