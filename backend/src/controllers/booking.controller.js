@@ -178,6 +178,11 @@ exports.applyVoucher = async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy thông tin chuyến đi (Booking)!" });
     }
 
+    // CHECK NẾU ĐÃ ÁP DỤNG VOUCHER RỒI
+    if (booking.voucher_applied) {
+      return res.status(400).json({ success: false, message: "Booking này đã được áp dụng mã giảm giá. Không thể áp dụng thêm!" });
+    }
+
     // Tường lửa chống lấy trộm / sửa Booking người khác
     const requestUserId = req.user && req.user.userId ? req.user.userId : null;
     if (booking.user_id && booking.user_id.toString() !== requestUserId) {
@@ -236,6 +241,7 @@ exports.applyVoucher = async (req, res) => {
     await voucher.save();
 
     booking.total_amount = new_total;
+    booking.voucher_applied = voucher.code; // LƯU DẤU VẾT ĐÃ ÁP DỤNG
     await booking.save(); // Lưu giá mới vào DB
 
     // Phản hồi về Frontend thành công
