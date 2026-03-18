@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "PORT=5173 next dev",
+    "dev": "next dev -p 5173",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -12,7 +12,10 @@
     "@tanstack/react-query": "^5.28.14",
     "axios": "^1.6.8",
     "clsx": "^2.1.0",
+    "date-fns": "^4.1.0",
     "framer-motion": "^11.0.24",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.363.0",
     "next": "^16.1.6",
     "next-auth": "^4.24.7",

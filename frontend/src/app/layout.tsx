@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Transport Booking System',
-  description: 'Transport Booking System',
+  description: 'Hệ thống đặt vé máy bay và tàu hỏa trực tuyến',
 }
 
 export default function RootLayout({
@@ -12,8 +12,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="vi">
+      <body className="min-h-screen">{children}</body>
     </html>
   )
 }
