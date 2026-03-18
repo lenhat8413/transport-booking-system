@@ -146,9 +146,10 @@ async function seed() {
     let booking = await Booking.findOne({ booking_code: "BC123" });
     if (!booking) {
       booking = new Booking({
-        user_id: user._id, // Sử dụng ObjectId thực tế của user
+        user_id: user._id,
         booking_code: "BC123",
         booking_type: "FLIGHT",
+        trip_id: flight._id, // THÊM TRIP_ID (DÙNG ID CỦA FLIGHT)
         total_amount: 500,
         status: "PENDING",
       });
@@ -156,7 +157,7 @@ async function seed() {
     }
 
     // Kiểm tra sự tồn tại của seats và thêm nếu không có
-    const seats = [
+    const flightSeatsData = [
       {
         seat_number: "1A",
         class: "ECONOMY",
@@ -168,21 +169,49 @@ async function seed() {
         class: "BUSINESS",
         status: "HELD",
         flight_id: flight._id,
-        held_by_booking_id: booking._id, // Sử dụng ObjectId thực tế của booking
-        hold_expired_at: new Date().getTime() + 15 * 60 * 1000,
+        held_by_booking_id: booking._id,
+        hold_expired_at: new Date(Date.now() + 15 * 60 * 1000),
       },
     ];
-    await Seat.insertMany(seats);
+
+    for (const s of flightSeatsData) {
+      const exists = await Seat.findOne({ flight_id: s.flight_id, seat_number: s.seat_number });
+      if (!exists) {
+        await new Seat(s).save();
+      }
+    }
+
+    // TẠO THÊM GHẾ CHO TÀU LỬA (TRAIN SEATS)
+    const trainSeats = [];
+    for (let i = 1; i <= 40; i++) {
+      const seatNumber = `${i}`;
+      const exists = await Seat.findOne({ carriage_id: trainCarriage._id, seat_number: seatNumber });
+
+      if (!exists) {
+        trainSeats.push({
+          seat_number: seatNumber,
+          class: trainCarriage.type, // Kế thừa từ Toa tàu (ECONOMY/BUSINESS)
+          status: "AVAILABLE",
+          carriage_id: trainCarriage._id,
+          price_modifier: 0
+        });
+      }
+    }
+
+    if (trainSeats.length > 0) {
+      await Seat.insertMany(trainSeats);
+      console.log(`Đã thêm ${trainSeats.length} ghế cho toa tàu số ${trainCarriage.carriage_number}`);
+    }
 
     // Kiểm tra sự tồn tại của payments và thêm nếu không có
     let payment = await Payment.findOne({ transaction_id: "TX123" });
     if (!payment) {
       payment = new Payment({
         booking_id: booking._id,
-        method: "Credit Card",
+        method: "MOCK",
         transaction_id: "TX123",
         amount: 500,
-        status: "PAID",
+        status: "SUCCESS",
         paid_at: new Date(),
       });
       await payment.save();
@@ -193,7 +222,9 @@ async function seed() {
     if (!voucher) {
       voucher = new Voucher({
         code: "VOUCHER10",
+        discount_type: "PERCENTAGE", // THÊM LOẠI GIẢM GIÁ
         discount_value: 10,
+        expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // HẠN 30 NGÀY
         is_active: true,
       });
       await voucher.save();

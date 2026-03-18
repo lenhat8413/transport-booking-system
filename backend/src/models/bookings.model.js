@@ -11,6 +11,7 @@ const bookingSchema = new mongoose.Schema({
     enum: ["PENDING", "WAITING_PAYMENT", "CONFIRMED", "CANCELLED", "EXPIRED"],
     default: "PENDING",
   },
+  voucher_applied: { type: String, default: null }, // Lưu mã giảm giá đã áp dụng
   expires_at: { type: Date },
   created_at: { type: Date, default: Date.now },
 });

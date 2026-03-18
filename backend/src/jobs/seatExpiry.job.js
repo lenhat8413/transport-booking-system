@@ -10,7 +10,7 @@ const { emitSeatUpdate } = require("../socket");
 async function releaseExpiredSeats() {
   try {
     const now = new Date();
-    // Tìm các Booking quá hạn 15 phút và đang ở trạng thái chờ
+    // Tìm các Booking quá hạn (15 phút) và đang ở trạng thái chờ
     const expiredBookings = await Booking.find({
       status: { $in: ["PENDING", "WAITING_PAYMENT"] },
       expires_at: { $lt: now }
@@ -19,20 +19,22 @@ async function releaseExpiredSeats() {
     const expiredBookingIds = expiredBookings.map(b => b._id);
 
     if (expiredBookingIds.length > 0) {
-      // Cập nhật trạng thái Booking thành EXPIRED
+      // 1. Cập nhật trạng thái Booking thành EXPIRED
       await Booking.updateMany(
         { _id: { $in: expiredBookingIds } },
         { $set: { status: "EXPIRED" } }
       );
 
-      // Cập nhật trạng thái Payment liên quan thành FAILED
+      // 2. Cập nhật trạng thái Payment liên quan thành FAILED
       await Payment.updateMany(
         { booking_id: { $in: expiredBookingIds }, status: "PENDING" },
         { $set: { status: "FAILED" } }
       );
+
+      console.log(`[SeatJob] Đã hủy ${expiredBookingIds.length} Booking quá hạn.`);
     }
 
-    // Tìm các ghế: Thuộc Booking vừa hết hạn HOẶC Ghế HELD đã quá hạn giữ (standalone hold)
+    // 3. Tìm và giải phóng các ghế: Thuộc Booking vừa hết hạn HOẶC Ghế HELD đã quá hạn giữ (standalone hold)
     const expiredSeats = await Seat.find({
       $or: [
         { held_by_booking_id: { $in: expiredBookingIds } },
@@ -40,41 +42,40 @@ async function releaseExpiredSeats() {
       ]
     });
 
-    if (standaloneSeats.length > 0) {
-      seatsToReleaseForSocket = seatsToReleaseForSocket.concat(standaloneSeats);
+    if (expiredSeats.length > 0) {
+      const result = await Seat.updateMany(
+        { _id: { $in: expiredSeats.map(s => s._id) } },
+        {
+          $set: {
+            status: "AVAILABLE",
+            held_by: null,
+            held_by_booking_id: null,
+            hold_expired_at: null,
+          },
+        }
+      );
 
-    // Cập nhật hàng loạt trạng thái ghế về AVAILABLE
-    const result = await Seat.updateMany(
-      { _id: { $in: expiredSeats.map(s => s._id) } },
-      {
-        $set: {
-          status: "AVAILABLE",
-          held_by: null,
-          held_by_booking_id: null,
-          hold_expired_at: { $lt: now },
-        },
-      }
-    );
+      console.log(`[SeatJob] Đã giải phóng ${result.modifiedCount} ghế.`);
 
-    console.log(`[SeatJob] Đã hủy ${expiredBookingIds.length} Booking. Giải phóng ${result.modifiedCount} ghế quá hạn.`);
+      // 4. Phát tín hiệu Socket cho Frontend cập nhật lại trạng thái ghế
+      expiredSeats.forEach((seat) => {
+        // Tạm thời lấy flight_id làm tripId.
+        const tripId = seat.flight_id?.toString();
+        if (!tripId) return;
 
-    // Duyệt qua danh sách ghế vừa giải phóng để báo cho Frontend
-    expiredSeats.forEach((seat) => {
-      // Xác định tripId (Ưu tiên lấy từ flight_id, nếu là tàu hỏa thì cần logic tra cứu thêm)
-      const tripId = seat.flight_id?.toString();
-      if (!tripId) return;
-
-      try {
-        emitSeatUpdate(tripId, "seat_released", {
-          tripId,
-          seatId: seat._id,
-          seat_number: seat.seat_number,
-          status: "AVAILABLE",
-          updatedAt: now,
-        });
-      } catch (error) {
-      }
-    });
+        try {
+          emitSeatUpdate(tripId, "seat_released", {
+            tripId,
+            seatId: seat._id,
+            seat_number: seat.seat_number,
+            status: "AVAILABLE",
+            updatedAt: now,
+          });
+        } catch (error) {
+          console.error(`[SeatJob] Lỗi gửi socket cho ghế ${seat._id}:`, error);
+        }
+      });
+    }
 
   } catch (err) {
     console.error("[ExpiryJob] Lỗi trong quá trình xử lý hết hạn:", err);
