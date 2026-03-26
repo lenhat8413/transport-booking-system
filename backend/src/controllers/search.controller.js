@@ -37,7 +37,8 @@ const searchFlights = async (req, res, next) => {
           limit: result.limit,
           totalItems: result.total,
           totalPages: Math.ceil(result.total / result.limit) || 1
-        }
+        },
+        filter_counts: result.filter_counts || {}
       },
       message: 'Flights found',
       errors: null
@@ -80,7 +81,8 @@ const searchTrainTrips = async (req, res, next) => {
           limit: result.limit,
           totalItems: result.total,
           totalPages: Math.ceil(result.total / result.limit) || 1
-        }
+        },
+        filter_counts: result.filter_counts || {}
       },
       message: 'Train trips found',
       errors: null

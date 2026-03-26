@@ -46,7 +46,7 @@ const findFlights = async ({ origin, destination, departureDate, passengers = 1,
   // --- LỌC THEO NGÀY VÀ GIỜ (time_from, time_to) ---
   const startOfDay = new Date(departureDate);
   const endOfDay = new Date(departureDate);
-  
+
   if (filters.time_from) {
     const [h, m] = filters.time_from.split(':');
     startOfDay.setUTCHours(parseInt(h), parseInt(m), 0, 0);
@@ -109,6 +109,30 @@ const findFlights = async ({ origin, destination, departureDate, passengers = 1,
       });
     }
   }
+  const filter_counts = {
+    airlines: {},
+    departure_time: {
+      morning: 0,   // 00:00 - 06:00
+      noon: 0,      // 06:00 - 12:00
+      afternoon: 0, // 12:00 - 18:00
+      evening: 0    // 18:00 - 24:00
+    }
+  };
+
+  validFlights.forEach(flight => {
+    // 1. Đếm Hãng bay
+    const airlineCode = flight.airline_id?.iata_code;
+    if (airlineCode) {
+      filter_counts.airlines[airlineCode] = (filter_counts.airlines[airlineCode] || 0) + 1;
+    }
+
+    // 2. Đếm Thời gian
+    const hour = new Date(flight.departure_time).getHours();
+    if (hour >= 0 && hour < 6) filter_counts.departure_time.morning += 1;
+    else if (hour >= 6 && hour < 12) filter_counts.departure_time.noon += 1;
+    else if (hour >= 12 && hour < 18) filter_counts.departure_time.afternoon += 1;
+    else if (hour >= 18 && hour <= 24) filter_counts.departure_time.evening += 1;
+  });
 
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
@@ -116,7 +140,8 @@ const findFlights = async ({ origin, destination, departureDate, passengers = 1,
     trips: validFlights.slice((pageNum - 1) * limitNum, pageNum * limitNum),
     total: validFlights.length,
     page: pageNum,
-    limit: limitNum
+    limit: limitNum,
+    filter_counts
   };
 };
 
@@ -141,7 +166,7 @@ const findTrainTrips = async ({ origin, destination, departureDate, passengers =
   // 1. LỌC GIÁ QUA BẢNG CARRIAGE TRƯỚC (Vì giá nằm ở đây)
   let validTripIds = null;
   const carriageQuery = {};
-  
+
   if (filters.seat_class) carriageQuery.type = filters.seat_class.toUpperCase();
   if (filters.min_price || filters.max_price) {
     carriageQuery.base_price = {};
@@ -164,8 +189,8 @@ const findTrainTrips = async ({ origin, destination, departureDate, passengers =
   if (validTripIds) query._id = { $in: validTripIds };
 
   const searchDate = new Date(departureDate);
-  const start = new Date(searchDate).setUTCHours(0,0,0,0);
-  const end = new Date(searchDate).setUTCHours(23,59,59,999);
+  const start = new Date(searchDate).setUTCHours(0, 0, 0, 0);
+  const end = new Date(searchDate).setUTCHours(23, 59, 59, 999);
   query.departure_time = { $gte: start, $lte: end };
 
   // 3. Thực thi
@@ -178,27 +203,48 @@ const findTrainTrips = async ({ origin, destination, departureDate, passengers =
   // Gắn giá thấp nhất theo ĐÚNG HẠNG GHẾ để Frontend hiển thị và Sort
   for (const t of trips) {
     const carriageCondition = { train_trip_id: t._id };
-    
+
     // NẾU CÓ LỌC HẠNG GHẾ, CHỈ TÌM TOA CỦA HẠNG ĐÓ
     if (filters.seat_class) {
       carriageCondition.type = filters.seat_class.toUpperCase();
     }
 
     const carriages = await TrainCarriage.find(carriageCondition);
-    
+
     // Nếu mảng carriages có data, lấy giá min. Nếu không, gán bằng 0
-    t.starting_price = carriages.length > 0 
-      ? Math.min(...carriages.map(c => c.base_price)) 
+    t.starting_price = carriages.length > 0
+      ? Math.min(...carriages.map(c => c.base_price))
       : 0;
   }
 
+  const filter_counts = {
+    airlines: {}, // Tàu hỏa thì mình có thể gộp chung hoặc lấy mã tàu
+    departure_time: {
+      morning: 0, noon: 0, afternoon: 0, evening: 0
+    }
+  };
+
+  trips.forEach(trip => {
+    // Với tàu hỏa, mình tạm quy về mã 'SE' như bên Frontend bạn fix cứng, hoặc đếm theo tên
+    const trainCode = 'SE'; // Hoặc trip.train_id?.name
+    filter_counts.airlines[trainCode] = (filter_counts.airlines[trainCode] || 0) + 1;
+
+    // Đếm thời gian
+    const hour = new Date(trip.departure_time).getHours();
+    if (hour >= 0 && hour < 6) filter_counts.departure_time.morning += 1;
+    else if (hour >= 6 && hour < 12) filter_counts.departure_time.noon += 1;
+    else if (hour >= 12 && hour < 18) filter_counts.departure_time.afternoon += 1;
+    else if (hour >= 18 && hour <= 24) filter_counts.departure_time.evening += 1;
+  });
+
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
-  return { 
-    trips: trips.slice((pageNum - 1) * limitNum, pageNum * limitNum), 
-    total: trips.length, 
-    page: pageNum, 
-    limit: limitNum 
+  return {
+    trips: trips.slice((pageNum - 1) * limitNum, pageNum * limitNum),
+    total: trips.length,
+    page: pageNum,
+    limit: limitNum,
+    filter_counts
   };
 };
 
@@ -230,9 +276,9 @@ const getFlightDetails = async (flightId) => {
   const availableEconomy = await Seat.countDocuments({ flight_id: flightId, class: 'ECONOMY', status: 'AVAILABLE' });
   const availableBusiness = await Seat.countDocuments({ flight_id: flightId, class: 'BUSINESS', status: 'AVAILABLE' });
 
-  return { 
-    ...flight, 
-    available_seats: { economy: availableEconomy, business: availableBusiness } 
+  return {
+    ...flight,
+    available_seats: { economy: availableEconomy, business: availableBusiness }
   };
 };
 
@@ -300,10 +346,10 @@ const checkTrainAvailability = async (tripId, seatClass) => {
 };
 
 
-module.exports = { 
-  findFlights, 
-  findTrainTrips, 
-  getFlightDetails, 
+module.exports = {
+  findFlights,
+  findTrainTrips,
+  getFlightDetails,
   getTrainTripDetails,
   checkFlightAvailability,
   checkTrainAvailability
