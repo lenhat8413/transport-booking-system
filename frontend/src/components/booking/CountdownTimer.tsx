@@ -15,7 +15,7 @@ export default function CountdownTimer({ expiresAt }: CountdownTimerProps) {
   useEffect(() => {
     const calculateTimeLeft = () => {
       const difference = new Date(expiresAt).getTime() - new Date().getTime();
-      
+
       if (difference <= 0) {
         setIsExpired(true);
         setTimeLeft('00:00');

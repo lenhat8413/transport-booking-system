@@ -34,7 +34,6 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
       transition={{ delay: 0.1 }}
       className="card"
     >
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
           <Icon className="w-5 h-5 text-brand-500" />
@@ -61,9 +60,7 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
         </div>
       </div>
 
-      {/* Route visualization */}
       <div className="flex items-center gap-4 bg-gradient-to-r from-brand-50/60 to-orange-50/40 rounded-2xl p-5">
-        {/* Departure */}
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
             <MapPin className="w-3.5 h-3.5" />
@@ -78,7 +75,6 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
           </div>
         </div>
 
-        {/* Arrow */}
         <div className="flex flex-col items-center gap-1">
           <div className="w-16 h-px bg-gradient-to-r from-brand-300 to-brand-500 relative">
             <ArrowRight className="w-4 h-4 text-brand-500 absolute -right-2 -top-2" />
@@ -88,7 +84,6 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
           </span>
         </div>
 
-        {/* Arrival */}
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
             <MapPin className="w-3.5 h-3.5" />
@@ -104,14 +99,12 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
         </div>
       </div>
 
-      {/* Expiry warning */}
       {booking.expires_at && (booking.status === 'PENDING' || booking.status === 'WAITING_PAYMENT') && (
         <div className="mt-4 flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
           <Clock className="w-4 h-4 flex-shrink-0" />
           <span>
-            Vui lòng hoàn tất trước{' '}
-            <strong>{formatTime(booking.expires_at)}</strong>
-            {' — '}
+            Vui lòng hoàn tất trước <strong>{formatTime(booking.expires_at)}</strong>
+            {' - '}
             {formatDate(booking.expires_at)}
           </span>
         </div>

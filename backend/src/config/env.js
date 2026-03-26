@@ -30,6 +30,14 @@ const env = {
 	vnpHashSecret: process.env.VNP_HASH_SECRET || "",
 	vnpUrl: process.env.VNP_URL || "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
 	vnpReturnUrl: process.env.VNP_RETURN_URL || "http://localhost:5173/payment-success",
+
+	// PayPal
+	paypalClientId: process.env.PAYPAL_CLIENTID || "",
+	paypalSecret: process.env.PAYPAL_SECRET || "",
+	paypalBaseUrl: process.env.PAYPAL_BASEURL || "https://api-m.sandbox.paypal.com",
+	paypalRedirectBaseUrl: process.env.PAYPAL_REDIRECT_BASE_URL || "",
+	paypalCurrency: process.env.PAYPAL_CURRENCY || "USD",
+	paypalExchangeRate: Number(process.env.PAYPAL_EXCHANGE_RATE || 25000),
 };
 
 module.exports = env;   

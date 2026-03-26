@@ -12,6 +12,13 @@ export interface PassengerDetail {
   id_card: string;
   seat_info: SeatInfo | null;
   final_price: number;
+  date_of_birth?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  passenger_type?: 'ADULT' | 'CHILD' | 'INFANT';
+  contact_info?: {
+    phone: string;
+    email: string;
+  };
 }
 
 export interface BookingSummary {

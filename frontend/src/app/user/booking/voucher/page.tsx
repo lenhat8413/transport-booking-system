@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,7 +18,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export default function VoucherPage() {
+function VoucherContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookingId = searchParams.get('bookingId');
@@ -257,5 +257,17 @@ export default function VoucherPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function VoucherPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
+      </div>
+    }>
+      <VoucherContent />
+    </Suspense>
   );
 }

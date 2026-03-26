@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import "./seat-map.css";
+import { getValidAccessToken } from "@/lib/auth";
 import { getSocket, disconnectSocket } from "@/lib/socket";
-import { getAccessToken } from "@/lib/auth";
 import config from "@/config";
 
 interface Seat {
@@ -59,10 +59,6 @@ function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
-}
-
-function getAuthToken(): string | null {
-  return getAccessToken();
 }
 
 function getSeatPrice(seat: Seat): number {
@@ -215,21 +211,23 @@ export default function SeatMapPage() {
     alert("Đã hết thời gian giữ ghế. Vui lòng chọn lại.");
 
     setSeats((prev) =>
-      prev.map((seat) => (ids.has(seat._id) ? { ...seat, status: "AVAILABLE", holdUntil: null } : seat))
+      prev.map((seat) =>
+        ids.has(seat._id) ? { ...seat, status: "AVAILABLE", holdUntil: null } : seat
+      )
     );
 
-    const token = getAuthToken();
-    if (token && tripId) {
-      fetch(`${API_BASE}/seats/release`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ seatIds: [...ids], tripId }),
-      }).catch(() => {});
-    }
-
+    void getValidAccessToken().then((token) => {
+      if (token && tripId && ids.size > 0) {
+        fetch(`${API_BASE}/seats/release`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ seatIds: [...ids], tripId }),
+        }).catch(() => {});
+      }
+    });
     setSelectedIds(new Set());
     setIsCounting(false);
     setTimeLeft(HOLD_DURATION_SECONDS);
@@ -294,8 +292,7 @@ export default function SeatMapPage() {
 
     setIsProcessing(true);
     setApiError(null);
-
-    const token = getAuthToken();
+    const token = await getValidAccessToken();
     if (!token) {
       setApiError("Bạn cần đăng nhập để đặt ghế.");
       setIsProcessing(false);

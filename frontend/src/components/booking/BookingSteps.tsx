@@ -16,7 +16,7 @@ const BOOKING_STEPS: Step[] = [
 ];
 
 interface BookingStepsProps {
-  currentStep: number; // 0-indexed
+  currentStep: number;
 }
 
 export default function BookingSteps({ currentStep }: BookingStepsProps) {
@@ -29,7 +29,6 @@ export default function BookingSteps({ currentStep }: BookingStepsProps) {
 
           return (
             <div key={step.label} className="flex items-center flex-1 last:flex-none">
-              {/* Step circle + label */}
               <div className="flex flex-col items-center">
                 <motion.div
                   initial={{ scale: 0.8 }}
@@ -58,7 +57,6 @@ export default function BookingSteps({ currentStep }: BookingStepsProps) {
                 </span>
               </div>
 
-              {/* Connector line */}
               {idx < BOOKING_STEPS.length - 1 && (
                 <div className="flex-1 mx-2 h-0.5 rounded-full relative overflow-hidden bg-gray-200 mt-[-24px]">
                   <motion.div

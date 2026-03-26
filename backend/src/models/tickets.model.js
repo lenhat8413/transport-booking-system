@@ -14,6 +14,13 @@ const ticketSchema = new mongoose.Schema({
   passenger_name: { type: String, required: true },
   passenger_id_card: { type: String, required: true },
   final_price: { type: Number, required: true },
+  date_of_birth: { type: Date },
+  gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'] },
+  passenger_type: { type: String, enum: ['ADULT', 'CHILD', 'INFANT'], default: 'ADULT' },
+  contact_info: {
+    phone: { type: String },
+    email: { type: String }
+  }
 });
 
 const Ticket = mongoose.model("Ticket", ticketSchema);

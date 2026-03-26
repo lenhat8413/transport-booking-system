@@ -1,6 +1,6 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
-const bookingController = require("../controllers/booking.controller"); // Import controller
+const bookingController = require("../controllers/booking.controller");
 const authMiddleware = require("../middleware/authMiddleware");
 
 const { validateBookingData } = require('../middleware/bookingValidator');
@@ -24,8 +24,6 @@ const optionalAuth = (req, res, next) => {
 
 // Tạo đặt vé mới
 router.post("/create", optionalAuth, validateBookingData, bookingController.createBooking);
-
-// Xử lý thanh toán đã chuyển sang payment.routes.js
 
 // Lấy danh sách các đặt vé
 router.get("/list", authMiddleware, bookingController.getAllBookings);

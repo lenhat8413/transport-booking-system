@@ -1,19 +1,21 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const paymentController = require('../controllers/payment.controller');
+const paymentController = require("../controllers/payment.controller");
 
-// D-based routes migration:
-router.post('/mock-confirm', paymentController.mockConfirm);
-router.post('/webhook', paymentController.paymentWebhook);
-router.get('/:bookingId/status', paymentController.getPaymentStatus);
+// Utility routes
+router.post("/mock-confirm", paymentController.mockConfirm);
+router.post("/webhook", paymentController.paymentWebhook);
 
-// API Tạo link VNPay (Frontend gọi lúc nhấn nút Thanh Toán)
-router.post('/create', paymentController.createVnpayUrl);
+// VNPay routes
+router.post("/create", paymentController.createVnpayUrl);
+router.get("/vnpay_return", paymentController.vnpayReturn);
+router.get("/vnpay_ipn", paymentController.vnpayIpn);
 
-// API VNPay Frontend Return
-router.get('/vnpay_return', paymentController.vnpayReturn);
+// PayPal routes
+router.post("/paypal/create", paymentController.createPaypalOrder);
+router.post("/paypal/capture", paymentController.capturePaypalOrder);
 
-// API VNPay Server-to-Server IPN
-router.get('/vnpay_ipn', paymentController.vnpayIpn);
+// Payment status by booking
+router.get("/:bookingId/status", paymentController.getPaymentStatus);
 
 module.exports = router;

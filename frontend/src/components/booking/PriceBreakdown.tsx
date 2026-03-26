@@ -36,12 +36,11 @@ export default function PriceBreakdown({ passengers, financials, voucherResult }
         <h3 className="font-semibold text-gray-900">Chi tiết thanh toán</h3>
       </div>
 
-      {/* Line items */}
       <div className="space-y-3 mb-4">
         {passengers.map((p) => (
           <div key={p.ticket_id} className="flex items-center justify-between text-sm">
             <span className="text-gray-600">
-              Vé — {p.passenger_name}
+              Vé - {p.passenger_name}
               {p.seat_info && <span className="text-gray-400"> (Ghế {p.seat_info.number})</span>}
             </span>
             <span className="font-medium text-gray-800">{formatCurrency(p.final_price)}</span>
@@ -51,13 +50,11 @@ export default function PriceBreakdown({ passengers, financials, voucherResult }
 
       <div className="border-t border-dashed border-gray-200 my-4" />
 
-      {/* Subtotal */}
       <div className="flex items-center justify-between text-sm mb-2">
         <span className="text-gray-600">Tạm tính</span>
         <span className="font-medium text-gray-800">{formatCurrency(subtotal)}</span>
       </div>
 
-      {/* Discount */}
       {discount > 0 && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -82,7 +79,6 @@ export default function PriceBreakdown({ passengers, financials, voucherResult }
 
       <div className="border-t border-gray-200 my-4" />
 
-      {/* Total */}
       <div className="flex items-center justify-between">
         <span className="text-lg font-bold text-gray-900">Tổng cộng</span>
         <div className="text-right">
@@ -91,13 +87,10 @@ export default function PriceBreakdown({ passengers, financials, voucherResult }
               {formatCurrency(subtotal)}
             </span>
           )}
-          <span className="text-2xl font-bold gradient-text">
-            {formatCurrency(total)}
-          </span>
+          <span className="text-2xl font-bold gradient-text">{formatCurrency(total)}</span>
         </div>
       </div>
 
-      {/* Tax note */}
       <p className="text-xs text-gray-400 mt-3 text-center">
         Đã bao gồm thuế và phí dịch vụ
       </p>

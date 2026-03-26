@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -9,7 +9,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import BookingSteps from '@/components/booking/BookingSteps';
-import { getBookingDetails, createVnpayPayment, mockConfirmPayment } from '@/lib/api';
+import { getBookingDetails, createVnpayPayment, createPaypalPayment, mockConfirmPayment } from '@/lib/api';
 import { useBookingStore } from '@/store/bookingStore';
 import type { BookingDetails, PaymentMethod } from '@/types';
 
@@ -52,8 +52,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     name: 'PayPal',
     description: 'Thanh toán quốc tế qua PayPal',
     icon: <Wallet className="w-6 h-6" />,
-    available: false,
-    badge: 'Sắp ra mắt',
+    available: true,
   },
   ...(isDev
     ? [
@@ -69,7 +68,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     : []),
 ];
 
-export default function PaymentPage() {
+function PaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookingId = searchParams.get('bookingId');
@@ -124,6 +123,9 @@ export default function PaymentPage() {
     try {
       if (selectedMethod === 'VNPAY') {
         const paymentUrl = await createVnpayPayment(bookingId);
+        window.location.href = paymentUrl;
+      } else if (selectedMethod === 'PAYPAL') {
+        const paymentUrl = await createPaypalPayment(bookingId);
         window.location.href = paymentUrl;
       } else if (selectedMethod === 'MOCK') {
         await mockConfirmPayment(bookingId, 'SUCCESS');
@@ -361,11 +363,23 @@ export default function PaymentPage() {
 
             <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
               <Lock className="w-3 h-3" />
-              <span>Mã hóa SSL 256-bit · Thanh toán an toàn</span>
+              <span>Mã hóa SSL 256-bit - Thanh toán an toàn</span>
             </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
+      </div>
+    }>
+      <PaymentContent />
+    </Suspense>
   );
 }

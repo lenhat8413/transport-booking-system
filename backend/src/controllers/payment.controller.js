@@ -4,324 +4,782 @@ const Booking = require("../models/bookings.model");
 const Seat = require("../models/seats.model");
 const env = require("../config/env");
 
-// --- Helper Functions ---
-const getVNPayDate = (d) => {
-    const pad = (n) => (n < 10 ? '0' + n : n);
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+const DEFAULT_PAYPAL_BASE_URL = "https://api-m.sandbox.paypal.com";
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "JPY",
+  "KMF",
+  "KRW",
+  "MGA",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
+]);
+
+const getVNPayDate = (date) => {
+  const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(
+    date.getDate()
+  )}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 };
 
 function sortObject(obj) {
-    let sorted = {};
-    let str = [];
-    for (let key in obj) { if (obj.hasOwnProperty(key)) { str.push(encodeURIComponent(key)); } }
-    str.sort();
-    for (let key = 0; key < str.length; key++) {
-        sorted[str[key]] = encodeURIComponent(obj[str[key]]).replace(/%20/g, "+");
-    }
-    return sorted;
+  const sorted = {};
+  const keys = Object.keys(obj).map((key) => encodeURIComponent(key));
+  keys.sort();
+
+  keys.forEach((key) => {
+    sorted[key] = encodeURIComponent(obj[key]).replace(/%20/g, "+");
+  });
+
+  return sorted;
 }
 
-// ─── KAN-220, 221, 222: Tạo URL VNPay ─────────────────
+function createSilentRes() {
+  return {
+    status: () => ({ json: () => {}, send: () => {} }),
+    json: () => {},
+    send: () => {},
+  };
+}
+
+function getClientIp(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor.length > 0) {
+    return forwardedFor.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress || "127.0.0.1";
+}
+
+function getBaseUrl(input, fallback) {
+  if (!input) return fallback;
+
+  try {
+    const parsed = new URL(input);
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+  } catch {
+    return fallback;
+  }
+}
+
+function getPaypalBaseUrl() {
+  return getBaseUrl(env.paypalBaseUrl, DEFAULT_PAYPAL_BASE_URL);
+}
+
+function getFrontendBaseUrl() {
+  const fallback = env.corsOrigin || "http://localhost:5173";
+  const base = getBaseUrl(env.paypalRedirectBaseUrl, fallback);
+  try {
+    return new URL(base).origin;
+  } catch {
+    return getBaseUrl(fallback, "http://localhost:5173");
+  }
+}
+
+function getPaypalCurrency() {
+  return (env.paypalCurrency || "USD").toUpperCase();
+}
+
+function getPaypalExchangeRate() {
+  const rate = Number(env.paypalExchangeRate || 0);
+  return Number.isFinite(rate) && rate > 0 ? rate : 25000;
+}
+
+function formatPaypalAmount(amount, currency) {
+  const numericAmount = Number(amount || 0);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error("Invalid booking amount for PayPal");
+  }
+
+  if (ZERO_DECIMAL_CURRENCIES.has(currency)) {
+    return `${Math.round(numericAmount)}`;
+  }
+
+  return numericAmount.toFixed(2);
+}
+
+function getPaypalCheckoutAmountFromVnd(vndAmount, currency) {
+  const normalizedCurrency = (currency || "USD").toUpperCase();
+  if (normalizedCurrency === "VND") {
+    throw new Error("PayPal does not support VND. Please set PAYPAL_CURRENCY to USD.");
+  }
+
+  const exchangeRate = getPaypalExchangeRate();
+  const amountInTargetCurrency = Number(vndAmount || 0) / exchangeRate;
+  return formatPaypalAmount(amountInTargetCurrency, normalizedCurrency);
+}
+
+function parsePaypalIssue(payload) {
+  if (payload?.details && Array.isArray(payload.details) && payload.details.length > 0) {
+    const detail = payload.details[0];
+    return detail.description || detail.issue || null;
+  }
+
+  return payload?.message || payload?.error_description || payload?.error || null;
+}
+
+function extractPaypalCapture(payload) {
+  const purchaseUnits = payload?.purchase_units || [];
+  for (const unit of purchaseUnits) {
+    const captures = unit?.payments?.captures || [];
+    if (captures.length > 0) {
+      return captures[0];
+    }
+  }
+  return null;
+}
+
+async function createOrReusePendingPayment(booking, method) {
+  let payment = await Payment.findOne({
+    booking_id: booking._id,
+    status: "PENDING",
+  }).sort({ createdAt: -1 });
+
+  if (!payment) {
+    payment = await Payment.create({
+      booking_id: booking._id,
+      method,
+      amount: booking.total_amount,
+      status: "PENDING",
+    });
+    return payment;
+  }
+
+  if (payment.method !== method || payment.amount !== booking.total_amount) {
+    payment.method = method;
+    payment.amount = booking.total_amount;
+    payment.transaction_id = null;
+    await payment.save();
+  }
+
+  return payment;
+}
+
+async function finalizePayment({ payment, status, gatewayPayload, transactionId }) {
+  if (!payment) return null;
+
+  if (payment.status === "SUCCESS" || payment.status === "FAILED") {
+    return payment;
+  }
+
+  payment.status = status;
+  payment.gateway_response = gatewayPayload || {};
+
+  if (transactionId) {
+    payment.transaction_id = transactionId;
+  }
+
+  if (status === "SUCCESS") {
+    payment.paid_at = new Date();
+  }
+
+  await payment.save();
+
+  const booking = await Booking.findById(payment.booking_id);
+  if (!booking) {
+    return payment;
+  }
+
+  if (booking.status !== "WAITING_PAYMENT" && booking.status !== "PENDING") {
+    return payment;
+  }
+
+  if (status === "SUCCESS") {
+    booking.status = "CONFIRMED";
+    booking.total_amount = payment.amount;
+    await booking.save();
+
+    await Seat.updateMany(
+      { held_by_booking_id: booking._id },
+      { $set: { status: "BOOKED" } }
+    );
+  } else if (status === "FAILED") {
+    booking.status = "CANCELLED";
+    await booking.save();
+
+    await Seat.updateMany(
+      { held_by_booking_id: booking._id },
+      { $set: { status: "AVAILABLE", held_by_booking_id: null } }
+    );
+  }
+
+  return payment;
+}
+
+async function getPaypalAccessToken() {
+  if (typeof fetch !== "function") {
+    throw new Error("Node.js must be v18+ to use PayPal integration");
+  }
+
+  if (!env.paypalClientId || !env.paypalSecret) {
+    throw new Error("Missing PayPal credentials in environment variables");
+  }
+
+  const baseUrl = getPaypalBaseUrl();
+  const auth = Buffer.from(`${env.paypalClientId}:${env.paypalSecret}`).toString("base64");
+
+  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    throw new Error(parsePaypalIssue(payload) || "Cannot get PayPal access token");
+  }
+
+  return payload.access_token;
+}
+
+async function getBookingForPayment(bookingId) {
+  const booking = await Booking.findById(bookingId);
+  if (!booking) return null;
+
+  if (booking.status !== "WAITING_PAYMENT" && booking.status !== "PENDING") {
+    return null;
+  }
+
+  return booking;
+}
+
 exports.createVnpayUrl = async (req, res) => {
-    try {
-        const { booking_id } = req.body;
-
-        const booking = await Booking.findById(booking_id);
-        if (!booking || (booking.status !== 'WAITING_PAYMENT' && booking.status !== 'PENDING')) {
-            return res.status(400).json({ success: false, message: "Booking không hợp lệ hoặc đã qua thanh toán" });
-        }
-
-        // Tái sử dụng Payment PENDING nếu đã có
-        let payment = await Payment.findOne({ booking_id: booking._id, status: 'PENDING' });
-        if (!payment) {
-            payment = await Payment.create({
-                booking_id: booking._id,
-                method: "VNPAY",
-                amount: booking.total_amount,
-                status: "PENDING"
-            });
-        } else if (payment.method !== 'VNPAY') {
-            payment.method = 'VNPAY';
-            await payment.save();
-        }
-
-        let ipAddr = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
-        let tmnCode = env.vnpTmnCode;
-        let secretKey = env.vnpHashSecret;
-        let vnpUrl = env.vnpUrl;
-        let returnUrl = env.vnpReturnUrl;
-
-        let date = new Date();
-        let createDate = getVNPayDate(date);
-        let expireDate = new Date(date.getTime() + 15 * 60000);
-        let vnpExpireDate = getVNPayDate(expireDate);
-
-        let finalReturnUrl = returnUrl;
-        if (returnUrl.includes('?')) {
-            finalReturnUrl += `&bookingId=${booking._id.toString()}`;
-        } else {
-            finalReturnUrl += `?bookingId=${booking._id.toString()}`;
-        }
-
-        let vnp_Params = {
-            'vnp_Version': '2.1.0',
-            'vnp_Command': 'pay',
-            'vnp_TmnCode': tmnCode,
-            'vnp_Locale': 'vn',
-            'vnp_CurrCode': 'VND',
-            'vnp_TxnRef': payment._id.toString(), // Dùng Object ID làm Mã Giao dịch vnp_TxnRef
-            'vnp_OrderInfo': `Thanh toan don hang ${booking.booking_code}`,
-            'vnp_OrderType': 'other',
-            'vnp_Amount': booking.total_amount * 100,
-            'vnp_ReturnUrl': finalReturnUrl,
-            'vnp_IpAddr': ipAddr,
-            'vnp_CreateDate': createDate,
-            'vnp_ExpireDate': vnpExpireDate
-        };
-
-        vnp_Params = sortObject(vnp_Params);
-
-        const signData = Object.keys(vnp_Params).map(key => `${key}=${vnp_Params[key]}`).join('&');
-        const hmac = crypto.createHmac("sha512", secretKey);
-        const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
-
-        vnp_Params['vnp_SecureHash'] = signed;
-        vnpUrl += '?' + Object.keys(vnp_Params).map(key => `${key}=${vnp_Params[key]}`).join('&');
-
-        res.status(200).json({ success: true, url: vnpUrl });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: "Lỗi tạo link thanh toán" });
+  try {
+    const { booking_id } = req.body || {};
+    if (!booking_id) {
+      return res.status(400).json({ success: false, message: "Missing booking_id" });
     }
+
+    const booking = await getBookingForPayment(booking_id);
+    if (!booking) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking is not valid for payment or already completed",
+      });
+    }
+
+    const payment = await createOrReusePendingPayment(booking, "VNPAY");
+
+    const ipAddr = getClientIp(req);
+    const tmnCode = env.vnpTmnCode;
+    const secretKey = env.vnpHashSecret;
+    const vnpUrl = env.vnpUrl;
+    const returnUrl = env.vnpReturnUrl;
+
+    if (!tmnCode || !secretKey || !vnpUrl || !returnUrl) {
+      return res.status(500).json({
+        success: false,
+        message: "VNPay config is missing in backend environment",
+      });
+    }
+
+    const now = new Date();
+    const createDate = getVNPayDate(now);
+    const expireDate = getVNPayDate(new Date(now.getTime() + 15 * 60 * 1000));
+
+    const finalReturnUrl = returnUrl.includes("?")
+      ? `${returnUrl}&bookingId=${booking._id.toString()}`
+      : `${returnUrl}?bookingId=${booking._id.toString()}`;
+
+    let vnpParams = {
+      vnp_Version: "2.1.0",
+      vnp_Command: "pay",
+      vnp_TmnCode: tmnCode,
+      vnp_Locale: "vn",
+      vnp_CurrCode: "VND",
+      vnp_TxnRef: payment._id.toString(),
+      vnp_OrderInfo: `Thanh toan don hang ${booking.booking_code}`,
+      vnp_OrderType: "other",
+      vnp_Amount: booking.total_amount * 100,
+      vnp_ReturnUrl: finalReturnUrl,
+      vnp_IpAddr: ipAddr,
+      vnp_CreateDate: createDate,
+      vnp_ExpireDate: expireDate,
+    };
+
+    vnpParams = sortObject(vnpParams);
+
+    const signData = Object.keys(vnpParams)
+      .map((key) => `${key}=${vnpParams[key]}`)
+      .join("&");
+
+    const signed = crypto
+      .createHmac("sha512", secretKey)
+      .update(Buffer.from(signData, "utf-8"))
+      .digest("hex");
+
+    const queryParams = { ...vnpParams, vnp_SecureHash: signed };
+    const paymentUrl =
+      `${vnpUrl}?` +
+      Object.keys(queryParams)
+        .map((key) => `${key}=${queryParams[key]}`)
+        .join("&");
+
+    return res.status(200).json({ success: true, url: paymentUrl });
+  } catch (error) {
+    console.error("Create VNPay URL error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Cannot create VNPay payment URL",
+    });
+  }
 };
 
-// ─── WEBHOOK GỐC CHUNG CHO MỌI CỔNG THANH TOÁN (Từ ổ D mang qua) ─────────────────
-exports.paymentWebhook = async (req, res) => {
-    try {
-        const { transaction_id, status, gateway_payload } = req.body || {};
-
-        if (!transaction_id || !status) {
-            return res.status(400).json({ success: false, message: 'Missing transaction_id or status' });
-        }
-
-        // transaction_id truyền vào từ IPN chính là payment._id trong hệ thống của chúng ta
-        let payment = await Payment.findById(transaction_id);
-        if (!payment) {
-            payment = await Payment.findOne({ transaction_id: transaction_id });
-        }
-
-        if (!payment) {
-            return res.status(404).json({ success: false, message: 'Payment not found' });
-        }
-
-        if (payment.status === 'SUCCESS' || payment.status === 'FAILED') {
-            return res.status(200).json({ success: true, message: 'Already processed' });
-        }
-
-        payment.status = status;
-        payment.gateway_response = gateway_payload || {};
-
-        if (status === 'SUCCESS') {
-            payment.paid_at = new Date();
-            // Lấy mã giao dịch thực tế của VNPay (Bank Transaction ID) lưu lại
-            if (gateway_payload && gateway_payload['vnp_TransactionNo']) {
-                payment.transaction_id = gateway_payload['vnp_TransactionNo'];
-            }
-        }
-        await payment.save();
-
-        const booking = await Booking.findById(payment.booking_id);
-        if (booking) {
-            if (booking.status !== 'WAITING_PAYMENT' && booking.status !== 'PENDING') {
-                return res.status(200).json({ success: true, message: 'Booking already confirmed or cancelled' });
-            }
-
-            if (status === 'SUCCESS') {
-                booking.status = 'CONFIRMED';
-                booking.total_amount = payment.amount;
-                await booking.save();
-
-                // Cập nhật Ghế (Seat) - Đặc quyền ổ C
-                await Seat.updateMany(
-                    { held_by_booking_id: booking._id },
-                    { $set: { status: 'BOOKED' } }
-                );
-
-            } else if (status === 'FAILED') {
-                booking.status = 'FAILED';
-                await booking.save();
-
-                // Hủy giữ Ghế (Seat) - Đặc quyền ổ C
-                await Seat.updateMany(
-                    { held_by_booking_id: booking._id },
-                    { $set: { status: 'AVAILABLE', held_by_booking_id: null } }
-                );
-            }
-        }
-
-        res.status(200).send('OK');
-    } catch (error) {
-        console.error("Webhook Error:", error);
-        res.status(500).send('Webhook Processing Error');
+exports.createPaypalOrder = async (req, res) => {
+  try {
+    const { booking_id } = req.body || {};
+    if (!booking_id) {
+      return res.status(400).json({ success: false, message: "Missing booking_id" });
     }
+
+    const booking = await getBookingForPayment(booking_id);
+    if (!booking) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking is not valid for payment or already completed",
+      });
+    }
+
+    const payment = await createOrReusePendingPayment(booking, "PAYPAL");
+    const accessToken = await getPaypalAccessToken();
+
+    const paypalBaseUrl = getPaypalBaseUrl();
+    const frontendBaseUrl = getFrontendBaseUrl();
+    const currency = getPaypalCurrency();
+
+    const returnUrl =
+      `${frontendBaseUrl}/user/booking/paypal-return` +
+      `?provider=paypal&bookingId=${booking._id.toString()}`;
+    const cancelUrl =
+      `${frontendBaseUrl}/user/booking/paypal-return` +
+      `?provider=paypal&cancel=true&bookingId=${booking._id.toString()}`;
+
+    const orderPayload = {
+      intent: "CAPTURE",
+      purchase_units: [
+        {
+          reference_id: payment._id.toString(),
+          custom_id: booking._id.toString(),
+          invoice_id: `${booking.booking_code}-${payment._id.toString().slice(-6)}`,
+          amount: {
+            currency_code: currency,
+            value: getPaypalCheckoutAmountFromVnd(booking.total_amount, currency),
+          },
+        },
+      ],
+      application_context: {
+        brand_name: "Transport Booking",
+        user_action: "PAY_NOW",
+        shipping_preference: "NO_SHIPPING",
+        return_url: returnUrl,
+        cancel_url: cancelUrl,
+      },
+    };
+
+    const response = await fetch(`${paypalBaseUrl}/v2/checkout/orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(orderPayload),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(400).json({
+        success: false,
+        message: parsePaypalIssue(payload) || "Cannot create PayPal order",
+      });
+    }
+
+    const approvalUrl =
+      payload?.links?.find((link) => link.rel === "approve")?.href || null;
+
+    if (!payload?.id || !approvalUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "PayPal did not return approve URL",
+      });
+    }
+
+    payment.transaction_id = payload.id;
+    payment.gateway_response = {
+      ...(payment.gateway_response || {}),
+      paypal_order_create: payload,
+    };
+    await payment.save();
+
+    return res.status(200).json({
+      success: true,
+      url: approvalUrl,
+      order_id: payload.id,
+    });
+  } catch (error) {
+    console.error("Create PayPal order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Cannot create PayPal order",
+    });
+  }
 };
 
-// ─── VNPay Return URL (Frontend bắt lấy và Redirect) ─────────────────
-exports.vnpayReturn = async (req, res) => {
-    try {
-        let vnp_Params = req.query;
-        const secureHash = vnp_Params['vnp_SecureHash'];
+exports.capturePaypalOrder = async (req, res) => {
+  try {
+    const { booking_id, order_id, token, payer_id } = req.body || {};
+    const orderId = order_id || token;
 
-        let signDataParams = {};
-        for (let key in vnp_Params) {
-            if (key.startsWith('vnp_') && key !== 'vnp_SecureHash' && key !== 'vnp_SecureHashType') {
-                signDataParams[key] = vnp_Params[key];
-            }
-        }
-
-        signDataParams = sortObject(signDataParams);
-        const secretKey = env.vnpHashSecret;
-        const signData = Object.keys(signDataParams).map(key => `${key}=${signDataParams[key]}`).join('&');
-        const hmac = crypto.createHmac("sha512", secretKey);
-        const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
-
-        if (secureHash === signed) {
-            const rspCode = vnp_Params['vnp_ResponseCode'];
-
-            // Xử lý fallback Update (Bởi vì chạy localhost thì VNPay không thể bắn IPN trực tiếp về máy tính dev được)
-            let paymentId = vnp_Params['vnp_TxnRef'];
-            let paymentStatus = rspCode === '00' ? 'SUCCESS' : 'FAILED';
-
-            try {
-                const payment = await Payment.findById(paymentId);
-                if (payment && payment.status === 'PENDING') {
-                    const fakeReq = {
-                        body: {
-                            transaction_id: paymentId,
-                            status: paymentStatus,
-                            gateway_payload: vnp_Params
-                        }
-                    };
-                    const fakeRes = {
-                        status: () => ({ json: () => { }, send: () => { } })
-                    };
-                    await exports.paymentWebhook(fakeReq, fakeRes);
-                }
-            } catch (e) {
-                console.error("Fallback Update Error:", e);
-            }
-
-            res.status(200).json({ success: true, message: 'Valid signature', code: rspCode });
-        } else {
-            res.status(400).json({ success: false, message: 'Invalid signature', code: '97' });
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Error' });
+    if (!booking_id && !orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing booking_id or order_id",
+      });
     }
-};
 
-// ─── VNPay IPN (Server-to-Server) ─────────────────
-exports.vnpayIpn = async (req, res) => {
-    try {
-        let vnp_Params = req.query;
-        const secureHash = vnp_Params['vnp_SecureHash'];
+    let payment = null;
 
-        let paymentId = vnp_Params['vnp_TxnRef'];
-        let rspCode = vnp_Params['vnp_ResponseCode'];
-
-        let signDataParams = {};
-        for (let key in vnp_Params) {
-            if (key.startsWith('vnp_') && key !== 'vnp_SecureHash' && key !== 'vnp_SecureHashType') {
-                signDataParams[key] = vnp_Params[key];
-            }
-        }
-
-        signDataParams = sortObject(signDataParams);
-        const secretKey = env.vnpHashSecret;
-        const signData = Object.keys(signDataParams).map(key => `${key}=${signDataParams[key]}`).join('&');
-        const hmac = crypto.createHmac("sha512", secretKey);
-        const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex");
-
-        if (secureHash === signed) {
-            const payment = await Payment.findById(paymentId);
-            if (!payment) return res.status(200).json({ RspCode: '01', Message: 'Order not found' });
-
-            if (payment.amount * 100 !== parseInt(vnp_Params['vnp_Amount'])) {
-                return res.status(200).json({ RspCode: '04', Message: 'Amount invalid' });
-            }
-
-            if (payment.status === 'SUCCESS' || payment.status === 'FAILED') {
-                return res.status(200).json({ RspCode: '02', Message: 'Order already confirmed' });
-            }
-
-            let status = rspCode === '00' ? 'SUCCESS' : 'FAILED';
-
-            // Gọi hàm Webhook chung để xử lý DB Đồng bộ
-            const fakeReq = {
-                body: {
-                    transaction_id: paymentId,
-                    status: status,
-                    gateway_payload: vnp_Params
-                }
-            };
-            const fakeRes = {
-                status: () => ({ json: () => { }, send: () => { } })
-            };
-
-            await exports.paymentWebhook(fakeReq, fakeRes);
-
-            return res.status(200).json({ RspCode: '00', Message: 'Confirm Success' });
-        } else {
-            return res.status(200).json({ RspCode: '97', Message: 'Checksum failed' });
-        }
-    } catch (err) {
-        console.error("VNPAY IPN LỖI:", err);
-        return res.status(200).json({ RspCode: '99', Message: 'Unknown error' });
+    if (booking_id) {
+      payment = await Payment.findOne({
+        booking_id,
+        method: "PAYPAL",
+      }).sort({ createdAt: -1 });
     }
-};
 
-// ─── MOCK THỬ NGHIỆM THANH TOÁN DÀNH CHO DEV ─────────────────
-exports.mockConfirm = async (req, res) => {
-    try {
-        const { booking_id, status } = req.body;
-
-        if (!booking_id || !status) {
-            return res.status(400).json({ success: false, message: 'Missing booking_id or status' });
-        }
-
-        const payment = await Payment.findOne({ booking_id, status: 'PENDING' });
-        if (!payment) {
-            return res.status(404).json({ success: false, message: 'Payment not found or already processed' });
-        }
-
-        req.body = {
-            transaction_id: payment._id.toString(),
-            status,
-            gateway_payload: { mock: true }
-        };
-
-        return exports.paymentWebhook(req, res);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Lỗi server' });
+    if (!payment && orderId) {
+      payment = await Payment.findOne({
+        transaction_id: orderId,
+        method: "PAYPAL",
+      }).sort({ createdAt: -1 });
     }
-};
 
-// ─── XEM STATUS THANH TOÁN ─────────────────
-exports.getPaymentStatus = async (req, res) => {
-    try {
-        const payment = await Payment.findOne({ booking_id: req.params.bookingId }).sort({ createdAt: -1 });
-        if (!payment) {
-            return res.status(404).json({ success: false, message: 'Chưa có giao dịch thanh toán cho booking này' });
-        }
+    if (!payment) {
+      return res.status(404).json({ success: false, message: "Payment not found" });
+    }
 
-        res.status(200).json({
-            success: true,
-            data: payment
+    if (payment.status === "SUCCESS" || payment.status === "FAILED") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment already processed",
+        data: payment,
+      });
+    }
+
+    const accessToken = await getPaypalAccessToken();
+    const paypalBaseUrl = getPaypalBaseUrl();
+    const captureOrderId = orderId || payment.transaction_id;
+
+    if (!captureOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing PayPal order ID for capture",
+      });
+    }
+
+    const captureResponse = await fetch(
+      `${paypalBaseUrl}/v2/checkout/orders/${encodeURIComponent(captureOrderId)}/capture`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+      }
+    );
+
+    let capturePayload = await captureResponse.json().catch(() => ({}));
+    let capture = extractPaypalCapture(capturePayload);
+
+    if (!captureResponse.ok) {
+      const issue = capturePayload?.details?.[0]?.issue;
+
+      if (issue !== "ORDER_ALREADY_CAPTURED") {
+        return res.status(400).json({
+          success: false,
+          message: parsePaypalIssue(capturePayload) || "PayPal capture failed",
         });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Lỗi server' });
+      }
+
+      const orderResponse = await fetch(
+        `${paypalBaseUrl}/v2/checkout/orders/${encodeURIComponent(captureOrderId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      capturePayload = await orderResponse.json().catch(() => ({}));
+      capture = extractPaypalCapture(capturePayload);
+
+      if (!orderResponse.ok || !capture) {
+        return res.status(400).json({
+          success: false,
+          message: parsePaypalIssue(capturePayload) || "Cannot verify captured PayPal order",
+        });
+      }
     }
+
+    const status = capture?.status === "COMPLETED" ? "SUCCESS" : "FAILED";
+    const updatedPayment = await finalizePayment({
+      payment,
+      status,
+      transactionId: capture?.id || captureOrderId,
+      gatewayPayload: {
+        paypal_capture: capturePayload,
+        payer_id: payer_id || null,
+      },
+    });
+
+    return res.status(200).json({ success: true, data: updatedPayment });
+  } catch (error) {
+    console.error("Capture PayPal order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Cannot capture PayPal order",
+    });
+  }
+};
+
+exports.paymentWebhook = async (req, res) => {
+  try {
+    const { transaction_id, status, gateway_payload } = req.body || {};
+
+    if (!transaction_id || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing transaction_id or status",
+      });
+    }
+
+    let payment = await Payment.findById(transaction_id);
+    if (!payment) {
+      payment = await Payment.findOne({ transaction_id });
+    }
+
+    if (!payment) {
+      return res.status(404).json({ success: false, message: "Payment not found" });
+    }
+
+    const normalizedStatus = status === "SUCCESS" ? "SUCCESS" : "FAILED";
+    const transactionNo = gateway_payload?.vnp_TransactionNo || payment.transaction_id;
+
+    const updatedPayment = await finalizePayment({
+      payment,
+      status: normalizedStatus,
+      transactionId: transactionNo,
+      gatewayPayload: gateway_payload || {},
+    });
+
+    return res.status(200).json({ success: true, data: updatedPayment });
+  } catch (error) {
+    console.error("Payment webhook error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Webhook processing error",
+    });
+  }
+};
+
+exports.vnpayReturn = async (req, res) => {
+  try {
+    const vnpParams = req.query || {};
+    const secureHash = vnpParams.vnp_SecureHash;
+
+    const signDataParams = {};
+    for (const key of Object.keys(vnpParams)) {
+      if (
+        key.startsWith("vnp_") &&
+        key !== "vnp_SecureHash" &&
+        key !== "vnp_SecureHashType"
+      ) {
+        signDataParams[key] = vnpParams[key];
+      }
+    }
+
+    const sortedParams = sortObject(signDataParams);
+    const signData = Object.keys(sortedParams)
+      .map((key) => `${key}=${sortedParams[key]}`)
+      .join("&");
+
+    const signed = crypto
+      .createHmac("sha512", env.vnpHashSecret)
+      .update(Buffer.from(signData, "utf-8"))
+      .digest("hex");
+
+    if (secureHash !== signed) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid signature",
+        code: "97",
+      });
+    }
+
+    const paymentId = vnpParams.vnp_TxnRef;
+    const paymentStatus = vnpParams.vnp_ResponseCode === "00" ? "SUCCESS" : "FAILED";
+
+    try {
+      const payment = await Payment.findById(paymentId);
+      if (payment && payment.status === "PENDING") {
+        await exports.paymentWebhook(
+          {
+            body: {
+              transaction_id: paymentId,
+              status: paymentStatus,
+              gateway_payload: vnpParams,
+            },
+          },
+          createSilentRes()
+        );
+      }
+    } catch (innerError) {
+      console.error("VNPay return fallback update error:", innerError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Valid signature",
+      code: vnpParams.vnp_ResponseCode,
+    });
+  } catch (error) {
+    console.error("VNPay return error:", error);
+    return res.status(500).json({ success: false, message: "Error" });
+  }
+};
+
+exports.vnpayIpn = async (req, res) => {
+  try {
+    const vnpParams = req.query || {};
+    const secureHash = vnpParams.vnp_SecureHash;
+    const paymentId = vnpParams.vnp_TxnRef;
+
+    const signDataParams = {};
+    for (const key of Object.keys(vnpParams)) {
+      if (
+        key.startsWith("vnp_") &&
+        key !== "vnp_SecureHash" &&
+        key !== "vnp_SecureHashType"
+      ) {
+        signDataParams[key] = vnpParams[key];
+      }
+    }
+
+    const sortedParams = sortObject(signDataParams);
+    const signData = Object.keys(sortedParams)
+      .map((key) => `${key}=${sortedParams[key]}`)
+      .join("&");
+
+    const signed = crypto
+      .createHmac("sha512", env.vnpHashSecret)
+      .update(Buffer.from(signData, "utf-8"))
+      .digest("hex");
+
+    if (secureHash !== signed) {
+      return res.status(200).json({ RspCode: "97", Message: "Checksum failed" });
+    }
+
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      return res.status(200).json({ RspCode: "01", Message: "Order not found" });
+    }
+
+    if (payment.amount * 100 !== parseInt(vnpParams.vnp_Amount, 10)) {
+      return res.status(200).json({ RspCode: "04", Message: "Amount invalid" });
+    }
+
+    if (payment.status === "SUCCESS" || payment.status === "FAILED") {
+      return res.status(200).json({ RspCode: "02", Message: "Order already confirmed" });
+    }
+
+    const status = vnpParams.vnp_ResponseCode === "00" ? "SUCCESS" : "FAILED";
+
+    await exports.paymentWebhook(
+      {
+        body: {
+          transaction_id: paymentId,
+          status,
+          gateway_payload: vnpParams,
+        },
+      },
+      createSilentRes()
+    );
+
+    return res.status(200).json({ RspCode: "00", Message: "Confirm success" });
+  } catch (error) {
+    console.error("VNPay IPN error:", error);
+    return res.status(200).json({ RspCode: "99", Message: "Unknown error" });
+  }
+};
+
+exports.mockConfirm = async (req, res) => {
+  try {
+    const { booking_id, status } = req.body || {};
+
+    if (!booking_id || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing booking_id or status",
+      });
+    }
+
+    const payment = await Payment.findOne({
+      booking_id,
+      status: "PENDING",
+    }).sort({ createdAt: -1 });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found or already processed",
+      });
+    }
+
+    return exports.paymentWebhook(
+      {
+        body: {
+          transaction_id: payment._id.toString(),
+          status: status === "SUCCESS" ? "SUCCESS" : "FAILED",
+          gateway_payload: { mock: true },
+        },
+      },
+      res
+    );
+  } catch (error) {
+    console.error("Mock confirm error:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+exports.getPaymentStatus = async (req, res) => {
+  try {
+    const payment = await Payment.findOne({ booking_id: req.params.bookingId }).sort({
+      createdAt: -1,
+    });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "No payment transaction found for this booking",
+      });
+    }
+
+    return res.status(200).json({ success: true, data: payment });
+  } catch (error) {
+    console.error("Get payment status error:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
 };
