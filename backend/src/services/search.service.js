@@ -13,13 +13,13 @@ const listAirports = async ({ q = "", limit = 20 } = {}) => {
   const trimmed = q.trim();
   const query = trimmed
     ? {
-        $or: [
-          { city: new RegExp(trimmed, "i") },
-          { name: new RegExp(trimmed, "i") },
-          { iata_code: new RegExp(trimmed, "i") },
-          { country: new RegExp(trimmed, "i") },
-        ],
-      }
+      $or: [
+        { city: new RegExp(trimmed, "i") },
+        { name: new RegExp(trimmed, "i") },
+        { iata_code: new RegExp(trimmed, "i") },
+        { country: new RegExp(trimmed, "i") },
+      ],
+    }
     : {};
 
   const items = await Airport.find(query)
@@ -42,11 +42,11 @@ const listTrainStations = async ({ q = "", limit = 20 } = {}) => {
   const trimmed = q.trim();
   const query = trimmed
     ? {
-        $or: [
-          { city: new RegExp(trimmed, "i") },
-          { name: new RegExp(trimmed, "i") },
-        ],
-      }
+      $or: [
+        { city: new RegExp(trimmed, "i") },
+        { name: new RegExp(trimmed, "i") },
+      ],
+    }
     : {};
 
   const items = await TrainStation.find(query)
@@ -75,7 +75,7 @@ const findFlights = async ({
   filters = {},
 }) => {
   if (origin && destination && origin.toUpperCase() === destination.toUpperCase()) {
-    const error = new Error("Diem di va diem den khong duoc trung nhau");
+    const error = new Error("Điểm đi và điểm đến không được trùng nhau");
     error.status = 400;
     error.code = "VALIDATION_ERROR";
     throw error;
@@ -98,30 +98,16 @@ const findFlights = async ({
     query.arrival_airport_id = destAirport._id;
   }
 
+  // 🔥 Đã sửa lỗi UTC, chỉ tìm trong nguyên 1 ngày Local
   if (departureDate) {
     const startOfDay = new Date(departureDate);
+    startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(departureDate);
-
-    if (filters.time_from) {
-      const [h, m] = filters.time_from.split(":");
-      startOfDay.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
-    } else {
-      startOfDay.setUTCHours(0, 0, 0, 0);
-    }
-
-    if (filters.time_to) {
-      const [h, m] = filters.time_to.split(":");
-      endOfDay.setUTCHours(parseInt(h, 10), parseInt(m, 10), 59, 999);
-    } else {
-      endOfDay.setUTCHours(23, 59, 59, 999);
-    }
-
+    endOfDay.setHours(23, 59, 59, 999);
     query.departure_time = { $gte: startOfDay, $lte: endOfDay };
   }
 
-  const seatClass = filters.seat_class
-    ? filters.seat_class.toLowerCase()
-    : "economy";
+  const seatClass = filters.seat_class ? filters.seat_class.toLowerCase() : "economy";
   const priceField = `prices.${seatClass}`;
 
   if (filters.min_price || filters.max_price) {
@@ -132,9 +118,7 @@ const findFlights = async ({
 
   if (filters.airlines) {
     const airlineCodes = filters.airlines.split(",");
-    const matchingAirlines = await Airline.find({
-      iata_code: { $in: airlineCodes },
-    });
+    const matchingAirlines = await Airline.find({ iata_code: { $in: airlineCodes } });
     query.airline_id = { $in: matchingAirlines.map((airline) => airline._id) };
   }
 
@@ -151,13 +135,29 @@ const findFlights = async ({
 
   const validFlights = [];
   for (const flight of flights) {
+    // 🔥 LỌC KHUNG GIỜ BẰNG JAVASCRIPT (Khắc phục triệt để lệch múi giờ)
+    let isTimeValid = true;
+    if (filters.times) {
+      const selectedTimes = filters.times.split(",");
+      const hour = new Date(flight.departure_time).getHours();
+
+      let matched = false;
+      if (selectedTimes.includes('morning') && hour >= 0 && hour < 6) matched = true;
+      if (selectedTimes.includes('noon') && hour >= 6 && hour < 12) matched = true;
+      if (selectedTimes.includes('afternoon') && hour >= 12 && hour < 18) matched = true;
+      if (selectedTimes.includes('evening') && hour >= 18 && hour <= 24) matched = true;
+
+      isTimeValid = matched;
+    }
+
     const availableSeats = await Seat.countDocuments({
       flight_id: flight._id,
       status: "AVAILABLE",
       class: seatClass.toUpperCase(),
     });
 
-    if (availableSeats >= passengerCount) {
+    // Chỉ push nếu đủ ghế và ĐÚNG KHUNG GIỜ
+    if (availableSeats >= passengerCount && isTimeValid) {
       const resolvedPrices = {
         economy: flight.prices?.economy ?? 1500000,
         business: flight.prices?.business ?? 3000000,
@@ -166,38 +166,26 @@ const findFlights = async ({
         ...flight,
         prices: resolvedPrices,
         available_seats_count: availableSeats,
-        current_price:
-          resolvedPrices[seatClass] ??
-          resolvedPrices.economy,
+        current_price: resolvedPrices[seatClass] ?? resolvedPrices.economy,
       });
     }
   }
+
   const filter_counts = {
     airlines: {},
-    departure_time: {
-      morning: 0, // 00:00 - 06:00
-      noon: 0, // 06:00 - 12:00
-      afternoon: 0, // 12:00 - 18:00
-      evening: 0, // 18:00 - 24:00
-    },
+    departure_time: { morning: 0, noon: 0, afternoon: 0, evening: 0 },
   };
 
   validFlights.forEach((flight) => {
-    // 1. Đếm Hãng bay
     const airlineCode = flight.airline_id?.iata_code;
     if (airlineCode) {
-      filter_counts.airlines[airlineCode] =
-        (filter_counts.airlines[airlineCode] || 0) + 1;
+      filter_counts.airlines[airlineCode] = (filter_counts.airlines[airlineCode] || 0) + 1;
     }
-
-    // 2. Đếm Thời gian
     const hour = new Date(flight.departure_time).getHours();
     if (hour >= 0 && hour < 6) filter_counts.departure_time.morning += 1;
     else if (hour >= 6 && hour < 12) filter_counts.departure_time.noon += 1;
-    else if (hour >= 12 && hour < 18)
-      filter_counts.departure_time.afternoon += 1;
-    else if (hour >= 18 && hour <= 24)
-      filter_counts.departure_time.evening += 1;
+    else if (hour >= 12 && hour < 18) filter_counts.departure_time.afternoon += 1;
+    else if (hour >= 18 && hour <= 24) filter_counts.departure_time.evening += 1;
   });
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -243,25 +231,22 @@ const findTrainTrips = async ({
 
   if (origin) {
     const originStation = await TrainStation.findOne({ name: origin });
-    if (!originStation) {
-      return { trips: [], total: 0, page, limit, filter_counts: {} };
-    }
+    if (!originStation) return { trips: [], total: 0, page, limit, filter_counts: {} };
     query.departure_station_id = originStation._id;
   }
 
   if (destination) {
     const destStation = await TrainStation.findOne({ name: destination });
-    if (!destStation) {
-      return { trips: [], total: 0, page, limit, filter_counts: {} };
-    }
+    if (!destStation) return { trips: [], total: 0, page, limit, filter_counts: {} };
     query.arrival_station_id = destStation._id;
   }
 
   if (departureDate) {
     const searchDate = new Date(departureDate);
-    const start = new Date(searchDate).setUTCHours(0, 0, 0, 0);
-    const end = new Date(searchDate).setUTCHours(23, 59, 59, 999);
-    query.departure_time = { $gte: start, $lte: end };
+    searchDate.setHours(0, 0, 0, 0);
+    const end = new Date(searchDate);
+    end.setHours(23, 59, 59, 999);
+    query.departure_time = { $gte: searchDate, $lte: end };
   }
 
   const trips = await TrainTrip.find(query)
@@ -270,33 +255,44 @@ const findTrainTrips = async ({
     .populate("arrival_station_id", "name city")
     .lean();
 
+  const validTrips = [];
   for (const trip of trips) {
+    //LỌC KHUNG GIỜ CHO TÀU HỎA
+    let isTimeValid = true;
+    if (filters.times) {
+      const selectedTimes = filters.times.split(",");
+      const hour = new Date(trip.departure_time).getHours();
+
+      let matched = false;
+      if (selectedTimes.includes('morning') && hour >= 0 && hour < 6) matched = true;
+      if (selectedTimes.includes('noon') && hour >= 6 && hour < 12) matched = true;
+      if (selectedTimes.includes('afternoon') && hour >= 12 && hour < 18) matched = true;
+      if (selectedTimes.includes('evening') && hour >= 18 && hour <= 24) matched = true;
+
+      isTimeValid = matched;
+    }
+
+    if (!isTimeValid) continue;
+
     const carriageCondition = { train_trip_id: trip._id };
     if (filters.seat_class) {
       carriageCondition.type = filters.seat_class.toUpperCase();
     }
 
     const carriages = await TrainCarriage.find(carriageCondition).lean();
-    trip.starting_price =
-      carriages.length > 0
-        ? Math.min(...carriages.map((carriage) => carriage.base_price))
-        : 0;
+    trip.starting_price = carriages.length > 0 ? Math.min(...carriages.map((c) => c.base_price)) : 0;
+
+    validTrips.push(trip);
   }
 
   const filter_counts = {
     airlines: {},
-    departure_time: {
-      morning: 0,
-      noon: 0,
-      afternoon: 0,
-      evening: 0,
-    },
+    departure_time: { morning: 0, noon: 0, afternoon: 0, evening: 0 },
   };
 
-  trips.forEach((trip) => {
+  validTrips.forEach((trip) => {
     const trainCode = trip.train_id?.train_number || trip.train_id?.name || "TRAIN";
-    filter_counts.airlines[trainCode] =
-      (filter_counts.airlines[trainCode] || 0) + 1;
+    filter_counts.airlines[trainCode] = (filter_counts.airlines[trainCode] || 0) + 1;
 
     const hour = new Date(trip.departure_time).getHours();
     if (hour >= 0 && hour < 6) filter_counts.departure_time.morning += 1;
@@ -305,15 +301,13 @@ const findTrainTrips = async ({
     else if (hour >= 18 && hour <= 24) filter_counts.departure_time.evening += 1;
   });
 
-  let sortedTrips = [...trips];
+  let sortedTrips = [...validTrips];
   if (sort === "price:asc") {
     sortedTrips.sort((a, b) => (a.starting_price || 0) - (b.starting_price || 0));
   } else if (sort === "price:desc") {
     sortedTrips.sort((a, b) => (b.starting_price || 0) - (a.starting_price || 0));
   } else {
-    sortedTrips.sort(
-      (a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime(),
-    );
+    sortedTrips.sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
   }
 
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -422,6 +416,8 @@ const checkTrainAvailability = async (tripId, seatClass) => {
 };
 
 module.exports = {
+  listAirports,
+  listTrainStations,
   findFlights,
   findTrainTrips,
   getFlightDetails,
@@ -429,4 +425,3 @@ module.exports = {
   checkFlightAvailability,
   checkTrainAvailability,
 };
-

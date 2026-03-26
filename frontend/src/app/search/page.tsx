@@ -174,36 +174,6 @@ function getDestinationLabel(type: SearchType, trip: SearchTrip, fallback: strin
   return trip.arrival_station_id?.city || trip.arrival_station_id?.name || fallback;
 }
 
-function SearchPillField({
-  icon,
-  label,
-  children,
-}: {
-  icon: string;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="sr-only">{label}</span>
-      <div className="flex min-h-[3.7rem] items-center gap-2.5 overflow-hidden rounded-[20px] border border-slate-200/90 bg-white/96 px-3.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-sky-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
-        <Image
-          src={icon}
-          alt=""
-          width={24}
-          height={24}
-          className="h-5 w-5 shrink-0 object-contain"
-        />
-        <span className="text-lg leading-none text-slate-300">|</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[0.72rem] font-semibold text-slate-500">{label}</p>
-          {children}
-        </div>
-      </div>
-    </label>
-  );
-}
-
 function SearchCompactField({
   icon,
   children,
@@ -258,19 +228,20 @@ function SearchResults() {
 
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
+  
+  // 🔥 KHÔI PHỤC LẠI LOGIC KHÓA SỐ ĐẾM BỘ LỌC
   const [filterCounts, setFilterCounts] = useState<FilterCounts>({});
+  const [baseFilterCounts, setBaseFilterCounts] = useState<FilterCounts>({});
 
   const [minPrice, setMinPrice] = useState(searchParams.get("min_price") || "");
   const [maxPrice, setMaxPrice] = useState(searchParams.get("max_price") || "");
   const [selectedAirlines, setSelectedAirlines] = useState<string[]>(
     searchParams.get("airlines")?.split(",").filter(Boolean) || [],
   );
-  const [selectedTimeRange, setSelectedTimeRange] = useState(
-    timeRanges.find(
-      (item) =>
-        item.from === searchParams.get("time_from") &&
-        item.to === searchParams.get("time_to"),
-    )?.id || "",
+  
+  // 🔥 CHUYỂN THÀNH MẢNG ĐỂ CHỌN NHIỀU CHECKBOX VÀ BẮT THEO PARAM "times"
+  const [selectedTimes, setSelectedTimes] = useState<string[]>(
+    searchParams.get("times")?.split(",").filter(Boolean) || [],
   );
 
   const endpointBase =
@@ -278,13 +249,14 @@ function SearchResults() {
   const locationEndpoint =
     searchType === "flight" ? "/flights/locations" : "/train-trips/locations";
 
+  // 🔥 SỬ DỤNG baseFilterCounts
   const carrierOptions = useMemo(() => {
-    return Object.entries(filterCounts.airlines || {}).map(([code, count]) => ({
+    return Object.entries(baseFilterCounts.airlines || {}).map(([code, count]) => ({
       code,
       label: code,
       count,
     }));
-  }, [filterCounts.airlines]);
+  }, [baseFilterCounts.airlines]);
 
   const locationList = useMemo(() => {
     const items = [...locationOptions];
@@ -343,6 +315,7 @@ function SearchResults() {
       min_price: "",
       max_price: "",
       airlines: "",
+      times: "", // 🔥 Đã thay time_from/time_to bằng times
       time_from: "",
       time_to: "",
       page: 1,
@@ -360,7 +333,7 @@ function SearchResults() {
     setMinPrice("");
     setMaxPrice("");
     setSelectedAirlines([]);
-    setSelectedTimeRange("");
+    setSelectedTimes([]); // 🔥 Reset mảng thời gian
 
     updateURL({
       type: nextType,
@@ -371,6 +344,7 @@ function SearchResults() {
       min_price: "",
       max_price: "",
       airlines: "",
+      times: "", // 🔥 Reset URL
       time_from: "",
       time_to: "",
       page: 1,
@@ -379,13 +353,13 @@ function SearchResults() {
   };
 
   const handleApplyFilter = () => {
-    const activeTimeRange = timeRanges.find((item) => item.id === selectedTimeRange);
     updateURL({
       min_price: minPrice,
       max_price: maxPrice,
       airlines: selectedAirlines.join(","),
-      time_from: activeTimeRange?.from || "",
-      time_to: activeTimeRange?.to || "",
+      times: selectedTimes.join(","), // 🔥 Truyền param 'times' lên URL
+      time_from: "", // Dọn dẹp URL rác nếu còn
+      time_to: "",
       page: 1,
     });
   };
@@ -394,11 +368,12 @@ function SearchResults() {
     setMinPrice("");
     setMaxPrice("");
     setSelectedAirlines([]);
-    setSelectedTimeRange("");
+    setSelectedTimes([]);
     updateURL({
       min_price: "",
       max_price: "",
       airlines: "",
+      times: "",
       time_from: "",
       time_to: "",
       page: 1,
@@ -415,13 +390,7 @@ function SearchResults() {
     setMinPrice(searchParams.get("min_price") || "");
     setMaxPrice(searchParams.get("max_price") || "");
     setSelectedAirlines(searchParams.get("airlines")?.split(",").filter(Boolean) || []);
-    setSelectedTimeRange(
-      timeRanges.find(
-        (item) =>
-          item.from === searchParams.get("time_from") &&
-          item.to === searchParams.get("time_to"),
-      )?.id || "",
-    );
+    setSelectedTimes(searchParams.get("times")?.split(",").filter(Boolean) || []);
   }, [departureDate, destination, origin, passengers, searchParams, seatClass, type]);
 
   useEffect(() => {
@@ -477,11 +446,18 @@ function SearchResults() {
 
         const items = Array.isArray(payload?.data?.items) ? payload.data.items : [];
         const pagination = payload?.data?.pagination || {};
+        const counts = payload?.data?.filter_counts || {};
 
         setResults(items);
         setTotalItems(pagination.totalItems || 0);
         setTotalPages(pagination.totalPages || 1);
-        setFilterCounts(payload?.data?.filter_counts || {});
+        setFilterCounts(counts);
+
+        // 🔥 LOGIC KHÓA SỐ ĐẾM (LƯU BASE)
+        const hasFilters = searchParams.has("airlines") || searchParams.has("times") || searchParams.has("min_price") || searchParams.has("max_price");
+        if (!hasFilters || Object.keys(baseFilterCounts).length === 0) {
+            setBaseFilterCounts(counts);
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") return;
@@ -496,6 +472,7 @@ function SearchResults() {
       });
 
     return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departureDate, destination, endpointBase, origin, searchParams]);
 
   return (
@@ -514,25 +491,25 @@ function SearchResults() {
             <div className="flex flex-col gap-2.5 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className={`text-[0.82rem] font-semibold uppercase tracking-[0.16em] ${searchHeroTheme.accentText}`}>
-                  {"T\u00ecm ki\u1ebfm"}
+                  {"Tìm kiếm"}
                 </p>
                 <h1 className="mt-1 text-[1.7rem] font-black tracking-tight text-slate-950 md:text-[2.1rem]">
-                  {"T\u00ecm chuy\u1ebfn \u0111i ph\u00f9 h\u1ee3p"}
+                  {"Tìm chuyến đi phù hợp"}
                 </h1>
                 <p className="mt-1.5 text-[0.94rem] text-slate-600 md:text-[1rem]">
-                  {"So s\u00e1nh nhanh c\u00e1c l\u1ef1a ch\u1ecdn v\u00e0 tinh ch\u1ec9nh b\u1ed9 l\u1ecdc ngay tr\u00ean m\u1ed9t m\u00e0n h\u00ecnh."}
+                  {"So sánh nhanh các lựa chọn và tinh chỉnh bộ lọc ngay trên một màn hình."}
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <span className={`rounded-full border bg-white/92 px-3.5 py-1.5 text-[0.95rem] font-semibold ${searchHeroTheme.accentBorder} ${searchHeroTheme.accentText}`}>
-                  {searchType === "flight" ? "\u004d\u00e1y bay" : "\u0054\u00e0u h\u1ecfa"}
+                  {searchType === "flight" ? "Máy bay" : "Tàu hỏa"}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[0.95rem] font-semibold text-slate-700">
-                  {searchPassengers} {"h\u00e0nh kh\u00e1ch"}
+                  {searchPassengers} {"hành khách"}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[0.95rem] font-semibold text-slate-700">
-                  {"H\u1ea1ng: "} {searchSeatClass === "business" ? "Th\u01b0\u01a1ng gia" : "Ph\u1ed5 th\u00f4ng"}
+                  {"Hạng: "} {searchSeatClass === "business" ? "Thương gia" : "Phổ thông"}
                 </span>
               </div>
             </div>
@@ -729,7 +706,7 @@ function SearchResults() {
                   <SlidersHorizontal className="h-[18px] w-[18px]" />
                 </span>
                 <div>
-                  <h2 className="text-[1.28rem] font-black text-slate-900">{"B\u1ed9 l\u1ecdc"}</h2>
+                  <h2 className="text-[1.28rem] font-black text-slate-900">{"Bộ lọc"}</h2>
                   <p className="text-sm leading-6 text-slate-500">{"Tinh chỉnh kết quả theo nhu cầu."}</p>
                 </div>
               </div>
@@ -744,9 +721,7 @@ function SearchResults() {
                   </div>
                   <div className="mt-3 grid gap-3">
                     <label className="grid gap-1.5">
-                      <span className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-                        {"Từ"}
-                      </span>
+                      <span className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-400">{"Từ"}</span>
                       <input
                         type="number"
                         placeholder={"Giá thấp nhất"}
@@ -756,9 +731,7 @@ function SearchResults() {
                       />
                     </label>
                     <label className="grid gap-1.5">
-                      <span className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-                        {"Đến"}
-                      </span>
+                      <span className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-400">{"Đến"}</span>
                       <input
                         type="number"
                         placeholder={"Giá cao nhất"}
@@ -837,14 +810,20 @@ function SearchResults() {
                         <span className="flex items-center gap-3">
                           <input
                             type="checkbox"
-                            checked={selectedTimeRange === item.id}
-                            onChange={() => setSelectedTimeRange((prev) => (prev === item.id ? "" : item.id))}
+                            checked={selectedTimes.includes(item.id)}
+                            onChange={() =>
+                              setSelectedTimes((prev) =>
+                                prev.includes(item.id)
+                                  ? prev.filter((value) => value !== item.id)
+                                  : [...prev, item.id],
+                              )
+                            }
                             className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-0"
                           />
                           <span className="font-semibold text-slate-700">{item.label}</span>
                         </span>
                         <span className="rounded-full bg-white px-2.5 py-1 text-[0.7rem] font-bold text-slate-500 shadow-sm">
-                          {filterCounts.departure_time?.[item.id] || 0}
+                          {baseFilterCounts.departure_time?.[item.id] || 0}
                         </span>
                       </label>
                     ))}
@@ -877,8 +856,8 @@ function SearchResults() {
                 <div>
                   <h2 className="text-[1.65rem] font-black tracking-tight text-slate-950">
                     {type === "flight"
-                      ? "K\u1ebft qu\u1ea3 chuy\u1ebfn bay"
-                      : "K\u1ebft qu\u1ea3 chuy\u1ebfn t\u00e0u"}
+                      ? "Kết quả chuyến bay"
+                      : "Kết quả chuyến tàu"}
                   </h2>
                   <p className="mt-2 text-sm text-slate-600">
                     {"Tuyến "}
@@ -889,15 +868,15 @@ function SearchResults() {
                 </div>
 
                 <label className="flex items-center gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
-                  <span className="font-semibold text-slate-500">{"S\u1eafp x\u1ebfp"}</span>
+                  <span className="font-semibold text-slate-500">{"Sắp xếp"}</span>
                   <select
                     value={sort}
                     onChange={(e) => updateURL({ sort: e.target.value, page: 1 })}
                     className="bg-transparent font-bold outline-none"
                   >
-                    <option value="price:asc">{"Gi\u00e1 th\u1ea5p nh\u1ea5t"}</option>
-                    <option value="price:desc">{"Gi\u00e1 cao nh\u1ea5t"}</option>
-                    <option value="departure_time:asc">{"Kh\u1edfi h\u00e0nh s\u1edbm nh\u1ea5t"}</option>
+                    <option value="price:asc">{"Giá thấp nhất"}</option>
+                    <option value="price:desc">{"Giá cao nhất"}</option>
+                    <option value="departure_time:asc">{"Khởi hành sớm nhất"}</option>
                   </select>
                 </label>
               </div>
@@ -905,7 +884,7 @@ function SearchResults() {
             {loading ? (
               <div className="rounded-[24px] border border-slate-200/90 bg-white/95 px-6 py-[4.4rem] text-center shadow-[0_16px_36px_rgba(15,23,42,0.07)]">
                 <Loader2 className="mx-auto h-10 w-10 animate-spin text-sky-600" />
-                <p className="mt-4 text-base font-bold text-slate-900">{"\u0110ang t\u00ecm chuy\u1ebfn \u0111i ph\u00f9 h\u1ee3p..."}</p>
+                <p className="mt-4 text-base font-bold text-slate-900">{"Đang tìm chuyến đi phù hợp..."}</p>
               </div>
             ) : error ? (
               <div className="rounded-[24px] border border-red-200 bg-white/95 px-6 py-[4.4rem] text-center shadow-[0_16px_36px_rgba(15,23,42,0.07)]">
@@ -916,7 +895,7 @@ function SearchResults() {
               <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/95 px-6 py-[4.4rem] text-center shadow-[0_16px_36px_rgba(15,23,42,0.07)]">
                 <Search className="mx-auto h-12 w-12 text-slate-300" />
                 <p className="mt-4 text-lg font-black text-slate-950">{DEFAULT_EMPTY_MESSAGE}</p>
-                <p className="mt-2 text-sm text-slate-500">{"H\u00e3y th\u1eed \u0111\u1ed5i \u0111i\u1ec3m \u0111i, \u0111i\u1ec3m \u0111\u1ebfn, ng\u00e0y \u0111i ho\u1eb7c b\u1ed9 l\u1ecdc."}</p>
+                <p className="mt-2 text-sm text-slate-500">{"Hãy thử đổi điểm đi, điểm đến, ngày đi hoặc bộ lọc."}</p>
               </div>
             ) : (
               <>
@@ -969,15 +948,15 @@ function SearchResults() {
 
                               <div className="mt-3.5 flex flex-wrap gap-2">
                                 <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
-                                  {"Ng\u00e0y \u0111i: "} {formatDate(trip.departure_time)}
+                                  {"Ngày đi: "} {formatDate(trip.departure_time)}
                                 </span>
                                 {type === "flight" && trip.available_seats_count != null && (
                                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                    {"C\u00f2n "} {trip.available_seats_count} {" gh\u1ebf"}
+                                    {"Còn "} {trip.available_seats_count} {" ghế"}
                                   </span>
                                 )}
                                 <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
-                                  {searchPassengers} {" h\u00e0nh kh\u00e1ch"}
+                                  {searchPassengers} {" hành khách"}
                                 </span>
                               </div>
                             </div>
@@ -985,7 +964,7 @@ function SearchResults() {
 
                           <div className="flex w-full flex-col items-start gap-2.5 xl:w-[200px] xl:items-end">
                             <div className="text-left xl:text-right">
-                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{"Gi\u00e1 t\u1eeb"}</p>
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{"Giá từ"}</p>
                               <p className="mt-1 text-[1.35rem] font-black tracking-tight text-slate-950">{formatCurrency(price)}</p>
                             </div>
 
@@ -993,7 +972,7 @@ function SearchResults() {
                               href={type === "flight" ? `/flights/${trip._id}` : `/train-trips/${trip._id}`}
                               className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#88dbff_0%,#32afff_100%)] px-5 py-2 text-[0.92rem] font-black text-slate-950 shadow-[0_12px_24px_rgba(50,175,255,0.20)] transition hover:-translate-y-0.5"
                             >
-                              {"Ch\u1ecdn chuy\u1ebfn"}
+                              {"Chọn chuyến"}
                             </Link>
                           </div>
                         </div>
@@ -1049,5 +1028,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-
-

@@ -4,9 +4,43 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
-    Plane, Clock, Briefcase, ShieldCheck, ChevronLeft,
-    Info, Users, Ticket, CheckCircle2, AlertCircle, Loader2
+    Plane, ChevronLeft, Info, Users, Briefcase,
+    ShieldCheck, CheckCircle2, Loader2
 } from 'lucide-react';
+
+// --- HÀM FORMAT TIỆN ÍCH ---
+function formatCurrency(value: number) {
+    return `${value.toLocaleString("vi-VN")} VND`;
+}
+
+function formatDate(value: string) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return new Intl.DateTimeFormat("vi-VN", {
+        weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'
+    }).format(parsed);
+}
+
+function formatTime(value: string) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "--:--";
+    return new Intl.DateTimeFormat("vi-VN", {
+        hour: "2-digit", minute: "2-digit",
+    }).format(parsed);
+}
+
+function getDurationLabel(start: string, end: string) {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return "--";
+    const diffMs = Math.max(0, endDate.getTime() - startDate.getTime());
+    const totalMinutes = Math.round(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes} phút`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}p`;
+}
 
 export default function FlightDetailPage() {
     const { id } = useParams();
@@ -29,173 +63,224 @@ export default function FlightDetailPage() {
     }, [id]);
 
     if (loading) return (
-        <div className="flex justify-center items-center h-screen bg-gray-50">
-            <Loader2 className="animate-spin text-blue-600" size={48} />
+        <div className="flex h-screen items-center justify-center bg-[#eef4fb]">
+            <Loader2 className="h-10 w-10 animate-spin text-sky-600" />
         </div>
     );
 
-    if (!flight) return <div className="text-center py-20 font-bold">Không tìm thấy thông tin chuyến bay.</div>;
+    if (!flight) return (
+        <div className="flex h-screen flex-col items-center justify-center bg-[#eef4fb]">
+            <div className="rounded-[24px] border border-slate-200 bg-white px-10 py-12 text-center shadow-sm">
+                <Plane className="mx-auto h-12 w-12 text-slate-300 mb-4" />
+                <p className="text-xl font-black text-slate-900">Không tìm thấy thông tin chuyến bay</p>
+                <button onClick={() => router.back()} className="mt-6 text-sky-600 font-bold hover:underline">Quay lại trang tìm kiếm</button>
+            </div>
+        </div>
+    );
 
-    // Tính toán giá dựa trên hạng ghế đã chọn
     const currentPrice = flight.prices?.[selectedClass] || flight.prices?.economy;
 
     return (
-        <div className="min-h-screen bg-gray-50 pt-24 pb-12">
-            <div className="max-w-6xl mx-auto px-4">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top,#f8fbff_0%,#edf4fb_38%,#e8eef6_100%)] pt-24 pb-12 text-slate-900">
+            <div className="max-w-[1140px] mx-auto px-4 md:px-5">
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 text-sm text-gray-500 mb-6 font-medium">
-                    <span className="hover:text-blue-600 cursor-pointer" onClick={() => router.push('/')}>Search Results</span>
-                    <span>→</span>
-                    <span className="text-gray-800 font-bold">Trip detail</span>
+                {/* --- BREADCRUMB --- */}
+                <div className="flex items-center gap-2 text-[0.85rem] font-semibold text-slate-500 mb-6">
+                    <button onClick={() => router.back()} className="flex items-center gap-1 hover:text-sky-600 transition-colors">
+                        <ChevronLeft className="w-4 h-4" /> Quay lại kết quả
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-800">Chi tiết chuyến bay</span>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
 
-                    {/* --- CỘT TRÁI: CHI TIẾT CHUYẾN BAY --- */}
-                    <div className="lg:col-span-2 space-y-6 bg-white rounded-xl shadow-sm border border-blue-200 p-8">
-                        <h1 className="text-3xl font-black text-gray-800 mb-2">Trip details</h1>
-                        <p className="text-gray-500 font-medium mb-8">
-                            Route: {flight.departure_airport_id?.iata_code} → {flight.arrival_airport_id?.iata_code} • Date: {new Date(flight.departure_time).toLocaleDateString('vi-VN')}
-                        </p>
+                    {/* --- CỘT TRÁI: CHI TIẾT --- */}
+                    <div className="space-y-6">
 
-                        {/* 1. Tóm tắt chuyến bay (Dashed Box) */}
-                        <div className="border-2 border-dashed border-blue-100 rounded-xl p-6 relative">
-                            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center font-black text-blue-600 border border-blue-100 italic">VN</div>
+                        {/* 1. Header & Tuyến bay */}
+                        <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-6 md:p-8 shadow-[0_16px_36px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+                            <div className="mb-8">
+                                <h1 className="text-[1.8rem] font-black tracking-tight text-slate-950">Chi tiết hành trình</h1>
+                                <p className="mt-1.5 text-[0.95rem] text-slate-600">
+                                    Mã chuyến: <span className="font-bold text-slate-800">{flight.flight_number}</span> • {formatDate(flight.departure_time)}
+                                </p>
+                            </div>
+
+                            {/* Timeline chuyến bay */}
+                            <div className="relative rounded-[20px] border border-slate-100 bg-slate-50/50 p-6">
+                                <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                                    
+                                    {/* Hãng bay */}
+                                    <div className="flex items-center gap-4 min-w-[200px]">
+                                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white border border-slate-200 text-sky-600 shadow-sm font-black text-xl italic">
+                                            {flight.airline_id?.iata_code || "FL"}
+                                        </div>
+                                        <div>
+                                            <p className="text-[1.1rem] font-black text-slate-950">{flight.airline_id?.name}</p>
+                                            <div className="flex gap-2 mt-1">
+                                                <span className="rounded-full bg-slate-200/70 px-2.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase tracking-wider">Airbus A321</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Giờ bay */}
+                                    <div className="flex flex-1 items-center gap-4 w-full">
+                                        <div className="text-center w-20">
+                                            <p className="text-2xl font-black text-slate-950">{formatTime(flight.departure_time)}</p>
+                                            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{flight.departure_airport_id?.iata_code}</p>
+                                        </div>
+                                        
+                                        <div className="flex-1 flex flex-col items-center">
+                                            <span className="text-[11px] font-bold text-slate-400 mb-2">{getDurationLabel(flight.departure_time, flight.arrival_time)}</span>
+                                            <div className="w-full flex items-center">
+                                                <div className="h-2 w-2 rounded-full border-2 border-sky-400 bg-white"></div>
+                                                <div className="h-[2px] flex-1 bg-gradient-to-r from-sky-200 via-sky-400 to-sky-200 border-dashed"></div>
+                                                <Plane className="h-5 w-5 text-sky-500 mx-2" />
+                                                <div className="h-[2px] flex-1 bg-gradient-to-r from-sky-200 via-sky-400 to-sky-200"></div>
+                                                <div className="h-2 w-2 rounded-full bg-sky-500"></div>
+                                            </div>
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-2">Bay thẳng</span>
+                                        </div>
+
+                                        <div className="text-center w-20">
+                                            <p className="text-2xl font-black text-slate-950">{formatTime(flight.arrival_time)}</p>
+                                            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{flight.arrival_airport_id?.iata_code}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* 2. Tiện ích & Hành lý */}
+                        <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-6 md:p-8 shadow-[0_16px_36px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+                            <h3 className="text-lg font-black text-slate-900 mb-5 flex items-center gap-2">
+                                <Briefcase className="w-5 h-5 text-sky-600" /> Hành lý & Tiện ích
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="flex gap-3 items-start p-4 rounded-[16px] border border-slate-100 bg-slate-50/50">
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                                     <div>
-                                        <div className="font-black text-gray-800">{flight.airline_id?.name}</div>
-                                        <div className="text-xs text-gray-500 font-bold">{flight.flight_number} • {selectedClass === 'economy' ? 'Economy' : 'Business'} • Non-stop</div>
+                                        <p className="font-bold text-slate-800 text-sm">Hành lý xách tay</p>
+                                        <p className="text-xs text-slate-500 mt-1">7kg (01 kiện kích thước chuẩn) và 01 túi xách nhỏ.</p>
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-12">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-black text-gray-800">{new Date(flight.departure_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
-                                        <div className="text-[10px] text-gray-400 font-bold uppercase">{flight.departure_airport_id?.iata_code} ({flight.departure_airport_id?.city})</div>
+                                <div className="flex gap-3 items-start p-4 rounded-[16px] border border-slate-100 bg-slate-50/50">
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">Hành lý ký gửi</p>
+                                        <p className="text-xs text-slate-500 mt-1">{selectedClass === 'business' ? 'Miễn phí 32kg' : 'Mua thêm khi đặt chỗ'}</p>
                                     </div>
-                                    <div className="w-20 border-t border-gray-300"></div>
-                                    <div className="text-center">
-                                        <div className="text-2xl font-black text-gray-800">{new Date(flight.arrival_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
-                                        <div className="text-[10px] text-gray-400 font-bold uppercase">{flight.arrival_airport_id?.iata_code} ({flight.arrival_airport_id?.city})</div>
+                                </div>
+                                <div className="flex gap-3 items-start p-4 rounded-[16px] border border-slate-100 bg-slate-50/50">
+                                    <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">Đổi/Hoàn vé</p>
+                                        <p className="text-xs text-slate-500 mt-1">{selectedClass === 'business' ? 'Miễn phí đổi chuyến' : 'Thu phí theo quy định hãng'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 items-start p-4 rounded-[16px] border border-slate-100 bg-slate-50/50">
+                                    <Info className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">Thủ tục bay</p>
+                                        <p className="text-xs text-slate-500 mt-1">Quầy thủ tục đóng trước 40 phút so với giờ khởi hành.</p>
                                     </div>
                                 </div>
                             </div>
+                        </section>
 
-                            {/* Tags */}
-                            <div className="flex gap-2 mt-6">
-                                {['Non-stop', '2h 15m', 'Carry-on 7kg'].map(tag => (
-                                    <span key={tag} className="px-3 py-1 bg-gray-50 border border-gray-200 rounded-full text-[10px] font-black text-gray-500 uppercase">{tag}</span>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* 2. Thông tin hãng (Grid) */}
-                        <div className="pt-4">
-                            <h3 className="font-black text-blue-800 bg-blue-50 w-fit px-2 py-1 rounded text-sm mb-4">Thông tin hãng</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="border border-blue-100 rounded-xl p-4">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Hãng bay</p>
-                                    <p className="font-bold text-gray-800">{flight.airline_id?.name}</p>
-                                </div>
-                                <div className="border border-blue-100 rounded-xl p-4">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Số hiệu chuyến bay</p>
-                                    <p className="font-bold text-gray-800">{flight.flight_number}</p>
-                                </div>
-                                <div className="border border-blue-100 rounded-xl p-4">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Máy bay</p>
-                                    <p className="font-bold text-gray-800">Airbus A321</p>
-                                </div>
-                                <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/30">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Hạng vé</p>
-                                    <p className="font-bold text-blue-600 capitalize">{selectedClass}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 3. Chính sách hành lý */}
-                        <div className="pt-4">
-                            <h3 className="font-black text-blue-800 bg-blue-50 w-fit px-2 py-1 rounded text-sm mb-4">Chính sách hành lý / quy định</h3>
-                            <ul className="space-y-2 text-sm text-gray-600 font-medium">
-                                <li className="flex items-start gap-2">• Hành lý xách tay: 7kg/người (01 kiện).</li>
-                                <li className="flex items-start gap-2">• Hành lý ký gửi: tùy hạng vé (có thể mua thêm).</li>
-                                <li className="flex items-start gap-2">• Có mặt trước giờ bay 60-90 phút để làm thủ tục.</li>
-                                <li className="flex items-start gap-2">• Đổi/huỷ: áp dụng theo điều kiện của hạng vé đã chọn.</li>
-                            </ul>
-                        </div>
-
-                        {/* 4. Chọn Hạng ghế (Chỉ hiển thị những gì có trong Database) */}
-                        <div className="pt-4">
-                            <h3 className="font-black text-blue-800 bg-blue-50 w-fit px-2 py-1 rounded text-sm mb-4">Hạng ghế</h3>
-                            <div className="space-y-3">
+                        {/* 3. Chọn Hạng Ghế */}
+                        <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-6 md:p-8 shadow-[0_16px_36px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+                            <h3 className="text-lg font-black text-slate-900 mb-5 flex items-center gap-2">
+                                <Users className="w-5 h-5 text-sky-600" /> Chọn hạng ghế
+                            </h3>
+                            <div className="grid gap-4">
                                 {[
-                                    { id: 'economy', name: 'Economy', desc: 'Giá tốt • Phù hợp đa số' },
-                                    { id: 'premium', name: 'Premium Economy', desc: 'Rộng hơn • Ưu tiên check-in' },
-                                    { id: 'business', name: 'Business', desc: 'Ưu tiên • Phòng chờ' }
+                                    { id: 'economy', name: 'Phổ thông (Economy)', desc: 'Tiết kiệm nhất • Phù hợp bay ngắn' },
+                                    { id: 'business', name: 'Thương gia (Business)', desc: 'Khoang riêng • Ưu tiên làm thủ tục • Phòng chờ VIP' }
                                 ]
-                                    // 🔥 BƯỚC QUAN TRỌNG: Chỉ giữ lại những hạng ghế có giá trị trong flight.prices
                                     .filter(cls => flight.prices && flight.prices[cls.id])
                                     .map((cls) => (
-                                        <label key={cls.id} className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${selectedClass === cls.id ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-300'}`}>
-                                            <div className="flex items-center gap-4">
-                                                <input
-                                                    type="radio"
-                                                    name="seatClass"
-                                                    className="w-5 h-5 accent-blue-600"
-                                                    checked={selectedClass === cls.id}
-                                                    onChange={() => setSelectedClass(cls.id)}
-                                                />
+                                        <label 
+                                            key={cls.id} 
+                                            className={`relative flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 rounded-[20px] border-2 cursor-pointer transition-all ${
+                                                selectedClass === cls.id 
+                                                ? 'border-sky-500 bg-sky-50/40 shadow-sm' 
+                                                : 'border-slate-200 hover:border-sky-300 hover:bg-slate-50/50'
+                                            }`}
+                                        >
+                                            {/* 🔥 FIX: Thêm thẻ input bị ẩn để sự kiện onChange hoạt động chính xác */}
+                                            <input 
+                                                type="radio" 
+                                                name="seatClass" 
+                                                className="hidden" 
+                                                checked={selectedClass === cls.id} 
+                                                onChange={() => setSelectedClass(cls.id)} 
+                                            />
+
+                                            <div className="flex items-center gap-4 mb-4 sm:mb-0">
+                                                <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 ${selectedClass === cls.id ? 'border-sky-500' : 'border-slate-300'}`}>
+                                                    {selectedClass === cls.id && <div className="w-3 h-3 bg-sky-500 rounded-full"></div>}
+                                                </div>
                                                 <div>
-                                                    <div className="font-black text-gray-800">{cls.name}</div>
-                                                    <div className="text-xs text-gray-500 font-medium">{cls.desc}</div>
+                                                    <p className={`text-[1.1rem] font-black ${selectedClass === cls.id ? 'text-sky-700' : 'text-slate-800'}`}>{cls.name}</p>
+                                                    <p className="text-xs font-semibold text-slate-500 mt-1">{cls.desc}</p>
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <div className="text-blue-600 font-black px-4 py-1 bg-white border border-blue-100 rounded-full text-xs">
-                                                    From {new Intl.NumberFormat('vi-VN').format(flight.prices[cls.id])}đ
-                                                </div>
+                                            <div className="sm:text-right ml-10 sm:ml-0">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Giá từ / khách</p>
+                                                <p className={`text-xl font-black ${selectedClass === cls.id ? 'text-sky-700' : 'text-slate-900'}`}>
+                                                    {formatCurrency(flight.prices[cls.id])}
+                                                </p>
                                             </div>
                                         </label>
                                     ))}
                             </div>
-                        </div>
+                        </section>
                     </div>
 
                     {/* --- CỘT PHẢI: SUMMARY SIDEBAR --- */}
-                    <aside className="space-y-6">
-                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 sticky top-24">
-                            <h2 className="text-2xl font-black text-gray-800 mb-8 uppercase tracking-tighter">Summary</h2>
-
-                            <div className="space-y-6">
-                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Hạng ghế đã chọn</p>
-                                    <p className="font-black text-gray-800 text-lg capitalize">{selectedClass}</p>
+                    <aside className="lg:sticky lg:top-24">
+                        <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-6 shadow-[0_20px_48px_rgba(15,23,42,0.08)] backdrop-blur-sm flex flex-col h-full">
+                            <h2 className="text-xl font-black text-slate-950 mb-6 border-b border-slate-100 pb-4">Tóm tắt đặt chỗ</h2>
+                            
+                            <div className="space-y-5 flex-1">
+                                <div className="flex justify-between items-center">
+                                    <p className="text-sm font-semibold text-slate-500">Chuyến bay</p>
+                                    <p className="text-sm font-black text-slate-800">{flight.flight_number}</p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <p className="text-sm font-semibold text-slate-500">Hạng ghế</p>
+                                    <p className="text-sm font-black text-sky-600 capitalize">{selectedClass === 'business' ? 'Thương gia' : 'Phổ thông'}</p>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <p className="text-sm font-semibold text-slate-500">Trạng thái</p>
+                                    <p className="text-sm font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">Còn chỗ</p>
                                 </div>
 
-                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Giá</p>
-                                    <div className="text-3xl font-black text-blue-600">
-                                        {new Intl.NumberFormat('vi-VN').format(currentPrice)}đ
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">from / pax</p>
+                                <div className="border-t border-slate-200/80 pt-5 mt-5">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Tổng cộng (1 khách)</p>
+                                    <p className="text-[1.8rem] font-black tracking-tight text-slate-950">{formatCurrency(currentPrice)}</p>
+                                    <p className="text-[10px] font-semibold text-slate-400 mt-1 italic">* Giá đã bao gồm thuế & phí</p>
                                 </div>
+                            </div>
 
+                            <div className="mt-8 space-y-3">
                                 <button
                                     onClick={() => router.push(`/booking/seat-selection?flightId=${flight._id}&class=${selectedClass}`)}
-                                    className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95"
+                                    className="flex w-full min-h-[3rem] items-center justify-center rounded-full bg-[linear-gradient(135deg,#88dbff_0%,#32afff_100%)] px-4 text-[0.95rem] font-black text-slate-950 shadow-[0_12px_24px_rgba(50,175,255,0.20)] transition hover:-translate-y-0.5 active:translate-y-0"
                                 >
-                                    Chọn ghế
+                                    Chọn ghế ngồi
                                 </button>
 
                                 <button
                                     onClick={() => router.back()}
-                                    className="w-full bg-white text-gray-800 border-2 border-gray-100 py-4 rounded-xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                                    className="flex w-full min-h-[3rem] items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[0.95rem] font-bold text-slate-700 hover:bg-slate-50 transition"
                                 >
-                                    Quay lại kết quả
+                                    Đổi chuyến khác
                                 </button>
                             </div>
-                        </div>
+                        </section>
                     </aside>
 
                 </div>
