@@ -56,8 +56,18 @@ exports.savePassengerInfo = async (req, res) => {
 
         // 5. Get existing tickets for this booking
         const existingTickets = await Ticket.find({ booking_id: bookingId });
-        const existingSeatIds = existingTickets.map(t => t.seat_id.toString());
         const incomingSeatIds = passengers.map(p => p.seat_id).filter(Boolean);
+
+        if (existingTickets.length === 0) {
+            return res.status(400).json({ success: false, message: 'Booking chưa có ghế để cập nhật hành khách' });
+        }
+
+        if (passengers.length !== existingTickets.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'Số lượng hành khách phải khớp với số vé đã được tạo từ bước chọn ghế'
+            });
+        }
 
         // 6. Update tickets with passenger information
         const updatePromises = passengers.map(async (p) => {
@@ -73,15 +83,7 @@ exports.savePassengerInfo = async (req, res) => {
             }
 
             if (!ticket) {
-                // Create new ticket if not exists
-                return Ticket.create({
-                    booking_id: bookingId,
-                    seat_id: p.seat_id,
-                    passenger_name: p.passenger_name.toUpperCase(),
-                    passenger_id_card: p.passenger_id_card,
-                    final_price: p.final_price || 0,
-                    contact_info: p.contact_info,
-                });
+                throw new Error(`Không tìm thấy vé tương ứng với ghế ${p.seat_id}`);
             }
 
             // Update existing ticket
@@ -99,6 +101,17 @@ exports.savePassengerInfo = async (req, res) => {
         });
 
         await Promise.all(updatePromises);
+
+        const primaryPassenger = passengers[0];
+        if (primaryPassenger) {
+            booking.booking_contact = {
+                full_name: (primaryPassenger.passenger_name ?? '').toUpperCase(),
+                email: primaryPassenger.contact_info?.email ?? '',
+                phone: primaryPassenger.contact_info?.phone ?? '',
+                id_card: primaryPassenger.passenger_id_card ?? '',
+            };
+            await booking.save();
+        }
 
         res.status(200).json({
             success: true,

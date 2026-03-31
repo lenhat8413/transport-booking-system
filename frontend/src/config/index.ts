@@ -13,7 +13,13 @@ const config = {
   /** How many seconds a seat hold lasts (must match backend env.seatHoldTtlMinutes) */
   seatHoldDurationSeconds: 15 * 60,
 
-  /** Fallback seat base price in VND if price_modifier is the only data */
+  /** Fixed seat-selection fee by class in VND */
+  seatSelectionFees: {
+    economy: 450_000,
+    business: 0,
+  },
+
+  /** Backward-compatible alias for older seat-map code */
   defaultSeatPrice: 450_000,
 } as const;
 

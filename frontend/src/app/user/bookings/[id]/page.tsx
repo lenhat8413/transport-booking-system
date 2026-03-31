@@ -65,7 +65,7 @@ export default function BookingSuccessPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-orange-200 border-t-orange-500" />
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-500" />
       </div>
     );
   }
@@ -80,7 +80,7 @@ export default function BookingSuccessPage() {
         <button
           type="button"
           onClick={() => router.push('/')}
-          className="mt-6 rounded-xl bg-[#A33900] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8F3000]"
+          className="mt-6 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
         >
           Ve trang chu
         </button>

@@ -311,10 +311,10 @@ export default function MyBookingsPage() {
       icon: Clock3,
       count: counts.pending,
       className:
-        "bg-[linear-gradient(90deg,#FEAA30_0%,#FD9A1E_50%,#FEB14C_100%)] shadow-[0_12px_26px_rgba(253,154,30,0.28)]",
-      hoverClass: "hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:shadow-[0_18px_42px_rgba(253,154,30,0.18)]",
-      hoverIconClass: "group-hover:bg-amber-100 group-hover:text-amber-700",
-      hoverCountClass: "group-hover:text-amber-600",
+        "bg-[linear-gradient(90deg,#60A5FA_0%,#3B82F6_50%,#2563EB_100%)] shadow-[0_12px_26px_rgba(37,99,235,0.28)]",
+      hoverClass: "hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.18)]",
+      hoverIconClass: "group-hover:bg-brand-100 group-hover:text-brand-700",
+      hoverCountClass: "group-hover:text-brand-600",
     },
     {
       key: "expired" as const,

@@ -12,6 +12,7 @@ import type {
   BookingDetails,
   VoucherResult,
   PaymentInfo,
+  UserProfile,
 } from '@/types';
 
 const api = axios.create({
@@ -113,6 +114,36 @@ export async function getBookingDetails(bookingId: string): Promise<BookingDetai
   }
 }
 
+export async function getCurrentUserProfile(): Promise<UserProfile | null> {
+  const token = await getValidAccessToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${config.apiBaseUrl}/auth/profile`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      return null;
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | { message?: string; data?: UserProfile }
+      | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.message ?? 'Khong the tai thong tin nguoi dung');
+    }
+
+    return payload?.data ?? null;
+  } catch (error: unknown) {
+    throw new Error(getErrorMessage(error, 'Khong the tai thong tin nguoi dung'));
+  }
+}
+
 export async function applyVoucher(
   bookingId: string,
   voucherCode: string
@@ -196,20 +227,6 @@ export async function verifyVnpayReturn(
     return data;
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error, 'Khong the xac minh ket qua VNPay'));
-  }
-}
-
-export async function mockConfirmPayment(
-  bookingId: string,
-  status: 'SUCCESS' | 'FAILED'
-): Promise<void> {
-  try {
-    await api.post('/payments/mock-confirm', {
-      booking_id: bookingId,
-      status,
-    });
-  } catch (error: unknown) {
-    throw new Error(getErrorMessage(error, 'Khong the xac nhan thanh toan gia lap'));
   }
 }
 

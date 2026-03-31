@@ -44,10 +44,10 @@ export default function CountdownTimer({ expiresAt }: CountdownTimerProps) {
         className={`flex items-start gap-4 p-4 rounded-xl border ${
           isExpired
             ? 'bg-red-50 border-red-100 text-red-800'
-            : 'bg-orange-50 border-orange-100 text-brand-800'
+            : 'bg-brand-50 border-brand-100 text-brand-800'
         }`}
       >
-        <div className={`p-2 rounded-full mt-0.5 ${isExpired ? 'bg-red-100' : 'bg-orange-100'}`}>
+        <div className={`p-2 rounded-full mt-0.5 ${isExpired ? 'bg-red-100' : 'bg-brand-100'}`}>
           <Clock className={`w-5 h-5 ${isExpired ? 'text-red-600' : 'text-brand-600'}`} />
         </div>
         <div>

@@ -27,7 +27,7 @@ export default function PaymentSection({ data }: PaymentSectionProps) {
                 {data.totalAmount}
               </h4>
             </div>
-            <WalletCards className="h-8 w-8 text-[#A33900]" />
+            <WalletCards className="h-8 w-8 text-brand-600" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -59,7 +59,7 @@ export default function PaymentSection({ data }: PaymentSectionProps) {
           <p className="mt-4 text-center text-[9px] font-bold uppercase leading-tight tracking-wider text-slate-400">
             Ma QR xac thuc ve
             <br />
-            <span className="text-[#A33900]">E-ticket Verify</span>
+            <span className="text-brand-600">E-ticket Verify</span>
           </p>
         </div>
       </div>

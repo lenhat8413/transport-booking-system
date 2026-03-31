@@ -11,16 +11,16 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#ff8c00',
-          600: '#ea7e00',
-          700: '#c2690a',
-          800: '#9a5510',
-          900: '#7c4510',
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#2563eb',
+          600: '#1d4ed8',
+          700: '#1e40af',
+          800: '#1e3a8a',
+          900: '#172554',
         },
       },
       fontFamily: {
@@ -33,7 +33,7 @@ const config: Config = {
       boxShadow: {
         'card': '0 2px 16px rgba(0, 0, 0, 0.06)',
         'card-hover': '0 8px 30px rgba(0, 0, 0, 0.10)',
-        'glow': '0 0 20px rgba(255, 140, 0, 0.15)',
+        'glow': '0 0 24px rgba(37, 99, 235, 0.18)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',

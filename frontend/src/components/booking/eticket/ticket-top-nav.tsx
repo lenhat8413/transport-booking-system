@@ -19,7 +19,7 @@ export default function TicketTopNav({
         </div>
 
         <nav className="hidden items-center gap-6 md:flex">
-          <button className="rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-600">
+          <button className="rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-600">
             My Trips
           </button>
           <button className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-900">
@@ -52,7 +52,7 @@ export default function TicketTopNav({
             aria-label="Download ticket"
             onClick={onDownload}
             disabled={!onDownload || isDownloading}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#A33900] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8F3000] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isDownloading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -64,7 +64,7 @@ export default function TicketTopNav({
             </span>
           </button>
 
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FFDBCE] text-[11px] font-bold text-[#A33900]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-[11px] font-bold text-brand-700">
             {bookingCode.slice(0, 2).toUpperCase()}
           </div>
         </div>

@@ -53,10 +53,13 @@ exports.releaseSeats = async (req, res) => {
 // GET /api/seats/map/:tripId
 exports.getSeatMap = async (req, res) => {
 	try {
-		const data = await seatService.getSeatMap(req.params.tripId);
-		res.status(200).json({ status: "success", data });
+			const data = await seatService.getSeatMap(
+				req.params.tripId,
+				req.query.class,
+			);
+			res.status(200).json({ status: "success", data });
 	} catch (err) {
-		handleError(res, err, "getSeatMap");
+			handleError(res, err, "getSeatMap");
 	}
 };
 

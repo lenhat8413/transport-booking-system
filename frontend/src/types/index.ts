@@ -6,11 +6,37 @@ export interface SeatInfo {
   additional_fee: number;
 }
 
+export interface BookingContact {
+  full_name: string;
+  email: string;
+  phone: string;
+  id_card: string;
+}
+
+export interface UserProfile {
+  _id?: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  id_card?: string;
+  passport?: string;
+  preferences?: {
+    notifications?: {
+      contact_email?: string;
+      contact_phone?: string;
+    };
+  };
+}
+
 export interface PassengerDetail {
   ticket_id: string;
   passenger_name: string;
   id_card: string;
   seat_info: SeatInfo | null;
+  base_price: number;
+  seat_selection_fee: number;
   final_price: number;
   date_of_birth?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
@@ -24,6 +50,7 @@ export interface PassengerDetail {
 export interface BookingSummary {
   id: string;
   code: string;
+  booking_contact?: BookingContact;
   type: 'FLIGHT' | 'TRAIN';
   trip_id: string;
   status: 'PENDING' | 'WAITING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
@@ -32,6 +59,9 @@ export interface BookingSummary {
 }
 
 export interface FinancialInfo {
+  base_fare_amount: number;
+  seat_selection_amount: number;
+  subtotal_amount: number;
   total_amount: number;
   discount_applied: number;
 }
@@ -52,12 +82,12 @@ export interface VoucherResult {
 }
 
 // ─── Payment Types ────────────────────────────────────────────
-export type PaymentMethod = 'VNPAY' | 'MOMO' | 'PAYPAL' | 'MOCK';
+export type PaymentMethod = 'VNPAY' | 'PAYPAL';
 
 export interface PaymentInfo {
   _id: string;
   booking_id: string;
-  method: PaymentMethod;
+  method: PaymentMethod | string;
   transaction_id?: string;
   amount: number;
   status: 'PENDING' | 'SUCCESS' | 'FAILED';

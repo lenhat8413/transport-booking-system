@@ -45,9 +45,7 @@ function formatDateTime(dateString: string): string {
 function getMethodName(method: string): string {
   const names: Record<string, string> = {
     VNPAY: 'VNPay',
-    MOMO: 'MoMo',
     PAYPAL: 'PayPal',
-    MOCK: 'Mock (Test)',
   };
   return names[method] ?? method;
 }
@@ -57,7 +55,6 @@ function ResultContent() {
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
   const bookingId = searchParams.get('bookingId');
-  const isMock = searchParams.get('mock') === 'true';
   const provider = searchParams.get('provider');
   const isPaypal = provider === 'paypal';
   const paypalToken = searchParams.get('token');
@@ -87,7 +84,7 @@ function ResultContent() {
     }
 
     try {
-      if (vnpResponseCode && !isMock && !isPaypal) {
+      if (vnpResponseCode && !isPaypal) {
         await verifyVnpayReturn(queryString).catch(() => {});
       }
 
@@ -152,7 +149,6 @@ function ResultContent() {
     }
   }, [
     bookingId,
-    isMock,
     isPaypal,
     isPaypalCancelled,
     paypalPayerId,

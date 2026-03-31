@@ -65,6 +65,28 @@ function validateSeatIds(seatIds, max = 9) {
 	}
 }
 
+function normalizeSeatClass(seatClass) {
+	if (!seatClass) return null;
+
+	const normalized = String(seatClass).trim().toUpperCase();
+
+	if (normalized === "BUSINESS" || normalized === "FIRST_CLASS") {
+		return "BUSINESS";
+	}
+
+	if (
+		normalized === "ECONOMY" ||
+		normalized === "PREMIUM_ECONOMY" ||
+		normalized === "PREMIUM" ||
+		normalized === "HARD_SEAT" ||
+		normalized === "SOFT_SEAT"
+	) {
+		return "ECONOMY";
+	}
+
+	return null;
+}
+
 // ─── getSeatStatus ────────────────────────────────────────────────────────────
 async function getSeatStatus(seatId) {
 	validateObjectId(seatId, "seatId");
@@ -81,13 +103,18 @@ async function getSeatStatus(seatId) {
 }
 
 // ─── getSeatMap ───────────────────────────────────────────────────────────────
-async function getSeatMap(tripId) {
+async function getSeatMap(tripId, seatClass) {
 	validateObjectId(tripId, "tripId");
+	const normalizedSeatClass = normalizeSeatClass(seatClass);
 
 	const flight = await Flight.findById(tripId);
 
 	if (flight) {
-		const seats = await Seat.find({ flight_id: tripId }).sort("seat_number");
+		const seatQuery = { flight_id: tripId };
+		if (normalizedSeatClass) {
+			seatQuery.class = normalizedSeatClass;
+		}
+		const seats = await Seat.find(seatQuery).sort("seat_number");
 		if (!seats || seats.length === 0) {
 			throw new SeatServiceError(
 				"Không có dữ liệu ghế cho chuyến đi này.",
@@ -104,16 +131,22 @@ async function getSeatMap(tripId) {
 				departureTime: flight.departure_time,
 				arrivalTime: flight.arrival_time,
 				status: flight.status,
-			},
-			seats: seats.map(formatSeat),
-		};
+				},
+				selectedClass: normalizedSeatClass,
+				seats: seats.map(formatSeat),
+			};
 	}
 
 	const trainTrip = await TrainTrip.findById(tripId);
 	if (!trainTrip)
 		throw new SeatServiceError("Trip not found", 404, "TRIP_NOT_FOUND");
 
-	const carriages = await TrainCarriage.find({ train_trip_id: tripId }).sort(
+	const carriageQuery = { train_trip_id: tripId };
+	if (normalizedSeatClass) {
+		carriageQuery.type = normalizedSeatClass;
+	}
+
+	const carriages = await TrainCarriage.find(carriageQuery).sort(
 		"carriage_number",
 	);
 
@@ -133,12 +166,13 @@ async function getSeatMap(tripId) {
 	return {
 		tripType: "train",
 		tripId: trainTrip._id,
-		trip: {
-			departureTime: trainTrip.departure_time,
-			arrivalTime: trainTrip.arrival_time,
-			status: trainTrip.status,
-		},
-		carriages: carriages.map((carriage) => ({
+			trip: {
+				departureTime: trainTrip.departure_time,
+				arrivalTime: trainTrip.arrival_time,
+				status: trainTrip.status,
+			},
+			selectedClass: normalizedSeatClass,
+			carriages: carriages.map((carriage) => ({
 			carriageId: carriage._id,
 			carriageNumber: carriage.carriage_number,
 			type: carriage.type,

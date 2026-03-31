@@ -60,7 +60,7 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 bg-gradient-to-r from-brand-50/60 to-orange-50/40 rounded-2xl p-5">
+      <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-r from-brand-50/80 to-sky-50/70 p-5">
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
             <MapPin className="w-3.5 h-3.5" />
@@ -100,7 +100,7 @@ export default function TripDetailsCard({ booking }: TripDetailsCardProps) {
       </div>
 
       {booking.expires_at && (booking.status === 'PENDING' || booking.status === 'WAITING_PAYMENT') && (
-        <div className="mt-4 flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3 text-sm text-brand-700">
           <Clock className="w-4 h-4 flex-shrink-0" />
           <span>
             Vui lòng hoàn tất trước <strong>{formatTime(booking.expires_at)}</strong>

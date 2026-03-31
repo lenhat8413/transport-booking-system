@@ -16,28 +16,28 @@ export default function TicketHero({
 }: TicketHeroProps) {
   return (
     <section className="grid gap-5 lg:grid-cols-[1.3fr_0.9fr]">
-      <div className="rounded-2xl border border-[#E2BFB2]/40 bg-gradient-to-br from-[#FFDBCE] via-[#FFF6F2] to-[#F1F3FF] p-5 sm:p-6">
+      <div className="rounded-2xl border border-brand-100/70 bg-gradient-to-br from-brand-50 via-white to-[#F1F3FF] p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <h1 className="font-ticket-headline text-2xl font-extrabold tracking-tight text-[#A33900] sm:text-3xl">
+          <h1 className="font-ticket-headline text-2xl font-extrabold tracking-tight text-brand-700 sm:text-3xl">
             TravelApp
           </h1>
-          <span className="h-4 w-px bg-[#E2BFB2]" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#5A4138]/70">
+          <span className="h-4 w-px bg-brand-100" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">
             Premium Experience
           </span>
         </div>
-        <p className="mt-2 text-sm font-medium text-[#5A4138]">
+        <p className="mt-2 text-sm font-medium text-slate-600">
           Premium booking and itinerary systems
         </p>
 
         <div className="mt-8">
-          <span className="inline-flex rounded-full border border-[#A33900]/20 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#A33900]">
+          <span className="inline-flex rounded-full border border-brand-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-brand-700">
             Official Document
           </span>
           <h2 className="font-ticket-headline mt-3 text-2xl font-extrabold leading-tight text-[#141B2B] sm:text-3xl">
             VE DIEN TU / E-TICKET
           </h2>
-          <p className="mt-2 max-w-xl text-sm text-[#5A4138]">
+          <p className="mt-2 max-w-xl text-sm text-slate-600">
             Xac nhan lich trinh va thong tin dat cho. Vui long giu ma dat cho de check-in nhanh hon.
           </p>
         </div>
@@ -48,7 +48,7 @@ export default function TicketHero({
               type="button"
               onClick={onDownload}
               disabled={!onDownload || isDownloading}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#A33900] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8F3000] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isDownloading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -59,7 +59,7 @@ export default function TicketHero({
             </button>
             <button
               type="button"
-              className="rounded-xl border border-[#E2BFB2] bg-white px-5 py-2.5 text-sm font-semibold text-[#5A4138] transition-colors hover:bg-[#FFF6F2]"
+              className="rounded-xl border border-brand-100 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-brand-50"
             >
               Manage Booking
             </button>
@@ -72,7 +72,7 @@ export default function TicketHero({
           <p className="text-[10px] font-bold uppercase tracking-tight text-slate-400">
             Booking Code / Ma dat cho
           </p>
-          <h3 className="font-ticket-headline mt-1 text-3xl font-extrabold text-[#A33900]">
+          <h3 className="font-ticket-headline mt-1 text-3xl font-extrabold text-brand-700">
             {data.bookingCode}
           </h3>
         </div>
@@ -87,7 +87,7 @@ export default function TicketHero({
             <span
               className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wide ${data.statusSuccess
                   ? 'bg-[#00873a]/10 text-[#006b2c]'
-                  : 'bg-amber-100 text-amber-700'
+                  : 'bg-brand-100 text-brand-700'
                 }`}
             >
               {data.statusLabel}
