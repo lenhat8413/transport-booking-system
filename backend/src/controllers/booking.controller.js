@@ -27,6 +27,77 @@ function mapBookingStatus(status) {
   return "expired";
 }
 
+function calculateDurationMinutes(startTime, endTime) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
+async function buildBookingTripSummary(booking) {
+  if (booking.booking_type === "FLIGHT") {
+    const flight = await Flight.findById(booking.trip_id)
+      .populate("airline_id", "name iata_code")
+      .populate("departure_airport_id", "name city iata_code")
+      .populate("arrival_airport_id", "name city iata_code")
+      .lean();
+
+    if (!flight) return null;
+
+    return {
+      carrier_name: flight.airline_id?.name || flight.flight_number || "Chuyen bay",
+      trip_code: flight.flight_number || "",
+      departure_name: flight.departure_airport_id?.name || "",
+      departure_city: flight.departure_airport_id?.city || "",
+      departure_code: flight.departure_airport_id?.iata_code || "",
+      arrival_name: flight.arrival_airport_id?.name || "",
+      arrival_city: flight.arrival_airport_id?.city || "",
+      arrival_code: flight.arrival_airport_id?.iata_code || "",
+      departure_time: flight.departure_time,
+      arrival_time: flight.arrival_time,
+      duration_minutes: calculateDurationMinutes(
+        flight.departure_time,
+        flight.arrival_time,
+      ),
+    };
+  }
+
+  const trainTrip = await TrainTrip.findById(booking.trip_id)
+    .populate("train_id", "name train_number")
+    .populate("departure_station_id", "name city")
+    .populate("arrival_station_id", "name city")
+    .lean();
+
+  if (!trainTrip) return null;
+
+  return {
+    carrier_name:
+      trainTrip.train_id?.name ||
+      trainTrip.train_id?.train_number ||
+      "Chuyen tau",
+    trip_code:
+      trainTrip.train_id?.train_number ||
+      trainTrip.train_id?.name ||
+      "",
+    departure_name: trainTrip.departure_station_id?.name || "",
+    departure_city: trainTrip.departure_station_id?.city || "",
+    departure_code: trainTrip.departure_station_id?.name || "",
+    arrival_name: trainTrip.arrival_station_id?.name || "",
+    arrival_city: trainTrip.arrival_station_id?.city || "",
+    arrival_code: trainTrip.arrival_station_id?.name || "",
+    departure_time: trainTrip.departure_time,
+    arrival_time: trainTrip.arrival_time,
+    duration_minutes: calculateDurationMinutes(
+      trainTrip.departure_time,
+      trainTrip.arrival_time,
+    ),
+  };
+}
+
 async function resolveFlightBasePrice(tripId, seatClass, cache) {
   if (cache[seatClass] != null) {
     return cache[seatClass];
@@ -509,6 +580,8 @@ exports.getBookingById = async (req, res) => {
     }
 
     // KAN-216: Gom thông tin hành khách và ghế ngồi từ bảng Tickets
+    const tripSummary = await buildBookingTripSummary(booking);
+
     const tickets = await Ticket.find({ booking_id: booking._id })
       .populate({
         path: 'seat_id',
@@ -575,6 +648,17 @@ exports.getBookingById = async (req, res) => {
           status: booking.status,
           created_at: booking.created_at,
           expires_at: booking.expires_at,
+          carrier_name: tripSummary?.carrier_name || "",
+          trip_code: tripSummary?.trip_code || "",
+          departure_name: tripSummary?.departure_name || "",
+          departure_city: tripSummary?.departure_city || "",
+          departure_code: tripSummary?.departure_code || "",
+          arrival_name: tripSummary?.arrival_name || "",
+          arrival_city: tripSummary?.arrival_city || "",
+          arrival_code: tripSummary?.arrival_code || "",
+          departure_time: tripSummary?.departure_time || null,
+          arrival_time: tripSummary?.arrival_time || null,
+          duration_minutes: tripSummary?.duration_minutes ?? null,
         },
         financials: {
           base_fare_amount: baseFareAmount,

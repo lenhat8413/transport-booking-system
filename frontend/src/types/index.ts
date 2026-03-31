@@ -56,6 +56,17 @@ export interface BookingSummary {
   status: 'PENDING' | 'WAITING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
   created_at: string;
   expires_at: string;
+  carrier_name?: string;
+  trip_code?: string;
+  departure_name?: string;
+  departure_city?: string;
+  departure_code?: string;
+  arrival_name?: string;
+  arrival_city?: string;
+  arrival_code?: string;
+  departure_time?: string | null;
+  arrival_time?: string | null;
+  duration_minutes?: number | null;
 }
 
 export interface FinancialInfo {
