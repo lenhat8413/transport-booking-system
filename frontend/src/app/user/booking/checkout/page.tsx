@@ -112,7 +112,7 @@ function CheckoutContent() {
               <h1 className="text-xl font-bold text-gray-900">Xác nhận đặt vé</h1>
             </div>
 
-            <button className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-brand-600 rounded-full text-sm font-semibold hover:bg-orange-100 transition-colors">
+            <button className="flex items-center gap-2 rounded-full bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-100">
               <HeadphonesIcon className="w-4 h-4" />
               Hỗ trợ 24/7
             </button>

@@ -62,7 +62,7 @@ const ETicketPDF = forwardRef<HTMLDivElement, ETicketPDFProps>(
                   }
             }
           >
-            <div className="h-2 w-full bg-gradient-to-r from-orange-400 to-[#A33900]" />
+            <div className="h-2 w-full bg-gradient-to-r from-brand-400 to-brand-700" />
 
             <div className="space-y-8 p-4 sm:p-8">
               <TicketHero

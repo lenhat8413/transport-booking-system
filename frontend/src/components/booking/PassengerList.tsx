@@ -72,9 +72,9 @@ export default function PassengerList({ passengers, bookingId }: PassengerListPr
       </div>
 
       {hasIncompleteInfo && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-500" />
+          <p className="text-sm text-brand-700">
             <strong>Chú ý:</strong> Vui lòng nhập đầy đủ thông tin hành khách trước khi thanh toán.
             Nhấn nút "Chỉnh sửa" để nhập thông tin.
           </p>

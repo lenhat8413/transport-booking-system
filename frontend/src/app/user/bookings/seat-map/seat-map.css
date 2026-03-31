@@ -194,6 +194,19 @@ body {
     gap: 0.5rem;
 }
 
+.seat-class-pill {
+    margin-top: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 999px;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
 /* Legend */
 .legend-items {
     display: flex;

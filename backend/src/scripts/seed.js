@@ -208,7 +208,7 @@ async function seed() {
     if (!payment) {
       payment = new Payment({
         booking_id: booking._id,
-        method: "MOCK",
+        method: "VNPAY",
         transaction_id: "TX123",
         amount: 500,
         status: "SUCCESS",

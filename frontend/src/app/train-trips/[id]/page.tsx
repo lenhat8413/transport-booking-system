@@ -10,8 +10,19 @@ import {
 } from 'lucide-react';
 
 // --- HÀM FORMAT TIỆN ÍCH ---
-function formatCurrency(value?: number | null) {
-    return `${(value ?? 0).toLocaleString("vi-VN")} VND`;
+function toNumber(value: unknown) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+        const normalized = Number(value.replace(/[^\d.-]/g, ""));
+        return Number.isFinite(normalized) ? normalized : null;
+    }
+    return null;
+}
+
+function formatCurrency(value: unknown) {
+    const amount = toNumber(value);
+    if (amount === null) return "Liên hệ";
+    return `${amount.toLocaleString("vi-VN")} VND`;
 }
 
 function formatDate(value: string) {
@@ -58,7 +69,9 @@ export default function TrainTripDetailPage() {
                 if (response.data.success) {
                     setTrip(response.data.data);
                     if (response.data.data.prices) {
-                        const availableClasses = Object.keys(response.data.data.prices);
+                        const availableClasses = Object.keys(response.data.data.prices).filter(
+                            (key) => toNumber(response.data.data.prices[key]) !== null
+                        );
                         if (availableClasses.length > 0) setSelectedClass(availableClasses[0]);
                     }
                 }
@@ -85,10 +98,15 @@ export default function TrainTripDetailPage() {
         </div>
     );
 
-    const currentPrice = trip.prices?.[selectedClass] || 0;
+    const currentPrice =
+        toNumber(trip.prices?.[selectedClass]) ??
+        toNumber(trip.prices?.economy) ??
+        toNumber(trip.base_price) ??
+        toNumber(trip.price) ??
+        0;
 
     return (
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top,#fffbf7_0%,#fff0e6_38%,#ffe4d6_100%)] pt-4 pb-12 text-slate-900">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top,#fffbf7_0%,#fff0e6_38%,#ffe4d6_100%)] pt-24 pb-12 text-slate-900">
             <div className="max-w-[1140px] mx-auto px-4 md:px-5">
 
                 {/* --- BREADCRUMB --- */}
@@ -206,7 +224,7 @@ export default function TrainTripDetailPage() {
                                     { id: 'premium', name: 'Giường nằm Khoang 6', desc: 'Thoải mái • Có gối mền • Phù hợp đi nhóm' },
                                     { id: 'business', name: 'Giường nằm Khoang 4', desc: 'Cao cấp • Không gian riêng tư • Yên tĩnh' }
                                 ]
-                                    .filter(cls => trip.prices && trip.prices[cls.id])
+                                    .filter((cls) => toNumber(trip.prices?.[cls.id]) !== null || (cls.id === 'economy' && currentPrice > 0))
                                     .map((cls) => (
                                         <label 
                                             key={cls.id} 
@@ -237,7 +255,10 @@ export default function TrainTripDetailPage() {
                                             <div className="sm:text-right ml-10 sm:ml-0">
                                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Giá từ / khách</p>
                                                 <p className={`text-xl font-black ${selectedClass === cls.id ? 'text-orange-700' : 'text-slate-900'}`}>
-                                                    {formatCurrency(trip.prices?.[cls.id])}
+                                                    {formatCurrency(
+                                                        trip.prices?.[cls.id] ??
+                                                        (cls.id === 'economy' ? currentPrice : null)
+                                                    )}
                                                 </p>
                                             </div>
                                         </label>
@@ -276,7 +297,7 @@ export default function TrainTripDetailPage() {
 
                             <div className="mt-8 space-y-3">
                                 <button
-                                    onClick={() => router.push(`/user/bookings/seat-map?tripId=${trip._id}&class=${selectedClass}&type=train`)}
+                                    onClick={() => router.push(`/user/bookings/seat-map?tripId=${trip._id}&type=TRAIN&class=${selectedClass}`)}
                                     className="flex w-full min-h-[3rem] items-center justify-center rounded-full bg-[linear-gradient(135deg,#ffb75e_0%,#ea580c_100%)] px-4 text-[0.95rem] font-black text-white shadow-[0_12px_24px_rgba(234,88,12,0.25)] transition hover:-translate-y-0.5 active:translate-y-0 gap-2"
                                 >
                                     Chọn toa & chỗ <ArrowRight size={18} />

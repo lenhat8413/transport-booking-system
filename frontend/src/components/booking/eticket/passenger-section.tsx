@@ -14,14 +14,14 @@ export default function PassengerSection({ data }: PassengerSectionProps) {
         <div className="overflow-x-auto">
           <table className="min-w-[620px] w-full border-collapse text-left">
             <thead>
-              <tr className="bg-[#FFDBCE]/40">
-                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-[#A33900] sm:px-6">
+              <tr className="bg-brand-50/70">
+                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-brand-700 sm:px-6">
                   Hanh Khach / Name
                 </th>
-                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-[#A33900] sm:px-6">
+                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-brand-700 sm:px-6">
                   Loai / Type
                 </th>
-                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-[#A33900] sm:px-6">
+                <th className="px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-brand-700 sm:px-6">
                   CCCD / Passport
                 </th>
               </tr>

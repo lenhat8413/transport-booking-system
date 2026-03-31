@@ -1726,7 +1726,7 @@ function HomeFooter() {
 
 export default function HomeShell({ initialMode = "flight" }: HomeShellProps) {
   const router = useRouter();
-  const loggedIn = isAuthenticated();
+  const [loggedIn, setLoggedIn] = useState(false);
   const [mode, setMode] = useState<TravelMode>(initialMode);
   const [modeTransitioning, setModeTransitioning] = useState(false);
   const [tripKind, setTripKind] = useState<TripKind>("one_way");
@@ -1798,6 +1798,10 @@ export default function HomeShell({ initialMode = "flight" }: HomeShellProps) {
     selectedSeatQueryValue,
     tripKind,
   ]);
+
+  useEffect(() => {
+    setLoggedIn(isAuthenticated());
+  }, []);
 
   useEffect(() => {
     if (!loggedIn) {

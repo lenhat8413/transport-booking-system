@@ -115,8 +115,8 @@ function VoucherContent() {
           className="card"
         >
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-              <Tag className="w-5 h-5 text-purple-500" />
+            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
+              <Tag className="w-5 h-5 text-brand-500" />
             </div>
             <div>
               <h2 className="font-semibold text-gray-900">Nhập mã giảm giá</h2>
@@ -218,11 +218,11 @@ function VoucherContent() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="p-4 bg-amber-50 border border-amber-100 rounded-xl"
+          className="rounded-xl border border-brand-100 bg-brand-50 p-4"
         >
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-700 leading-relaxed space-y-1">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-600" />
+            <div className="space-y-1 text-xs leading-relaxed text-brand-700">
               <p><strong>Lưu ý khi sử dụng mã giảm giá:</strong></p>
               <ul className="list-disc pl-4 space-y-0.5">
                 <li>Mỗi booking chỉ áp dụng được một mã giảm giá</li>

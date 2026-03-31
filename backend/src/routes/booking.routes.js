@@ -1,6 +1,7 @@
 ﻿const express = require("express");
 const router = express.Router();
 const bookingController = require("../controllers/booking.controller");
+const passengerController = require("../controllers/passenger.controller");
 const authMiddleware = require("../middleware/authMiddleware");
 
 const { validateBookingData } = require('../middleware/bookingValidator');
@@ -33,5 +34,8 @@ router.post("/apply-voucher", optionalAuth, bookingController.applyVoucher);
 
 // Xem chi tiết giỏ hàng Checkout
 router.get("/:bookingId/details", optionalAuth, bookingController.getBookingById);
+
+// Lưu thông tin hành khách vào booking sau khi giữ ghế xong
+router.post("/:bookingId/passengers", optionalAuth, passengerController.savePassengerInfo);
 
 module.exports = router;

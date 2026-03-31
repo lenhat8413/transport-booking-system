@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import "./seat-map.css";
 import { getValidAccessToken } from "@/lib/auth";
 import { getSocket, disconnectSocket } from "@/lib/socket";
@@ -34,6 +34,7 @@ interface TripInfo {
 interface SeatMapData {
   tripType: "flight" | "train";
   tripId: string;
+  selectedClass?: "ECONOMY" | "BUSINESS" | null;
   trip: TripInfo;
   seats?: Seat[];
   carriages?: {
@@ -48,7 +49,7 @@ interface SeatMapData {
 type WsStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
 
 const API_BASE = config.apiBaseUrl;
-const SEAT_PRICE = config.defaultSeatPrice;
+const SEAT_SELECTION_FEES = config.seatSelectionFees;
 const HOLD_DURATION_SECONDS = config.seatHoldDurationSeconds;
 
 function formatCurrency(amount: number) {
@@ -62,22 +63,32 @@ function formatTime(seconds: number) {
 }
 
 function getSeatPrice(seat: Seat): number {
-  return SEAT_PRICE + (seat.price_modifier ?? 0);
+  if (seat.class === "BUSINESS") {
+    return SEAT_SELECTION_FEES.business;
+  }
+  return SEAT_SELECTION_FEES.economy;
 }
 
-function normalizeSeatClass(value?: string | null): Seat["class"] {
-  return String(value).toLowerCase() === "business" ? "BUSINESS" : "ECONOMY";
+function normalizeSeatClass(seatClass?: string | null): "ECONOMY" | "BUSINESS" {
+  const normalized = String(seatClass || "").trim().toUpperCase();
+  if (normalized === "BUSINESS" || normalized === "FIRST_CLASS") {
+    return "BUSINESS";
+  }
+  return "ECONOMY";
 }
 
-function getSeatClassLabel(value: Seat["class"]) {
-  return value === "BUSINESS" ? "Thương gia" : "Phổ thông";
+function formatSeatClassLabel(seatClass: "ECONOMY" | "BUSINESS") {
+  return seatClass === "BUSINESS" ? "Thương gia" : "Phổ thông";
 }
 
 export default function SeatMapPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const tripId = searchParams.get("tripId");
-  const selectedCabinParam = searchParams.get("class");
+  const tripTypeParam = searchParams.get("type");
+  const seatClass = searchParams.get("class") || "economy";
+  const normalizedSeatClass = normalizeSeatClass(seatClass);
+  const normalizedTripType =
+    tripTypeParam?.toUpperCase() === "TRAIN" ? "TRAIN" : "FLIGHT";
 
   const [seatMap, setSeatMap] = useState<SeatMapData | null>(null);
   const [seats, setSeats] = useState<Seat[]>([]);
@@ -93,8 +104,6 @@ export default function SeatMapPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   const holdExpiredHandledRef = useRef(false);
-  const selectedCabin = normalizeSeatClass(selectedCabinParam);
-  const selectedCabinLabel = getSeatClassLabel(selectedCabin);
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -105,7 +114,10 @@ export default function SeatMapPage() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/seats/map/${id}`, { signal });
+      const res = await fetch(
+        `${API_BASE}/seats/map/${id}?class=${normalizedSeatClass}`,
+        { signal },
+      );
       const json = await res.json();
 
       if (!res.ok) {
@@ -114,12 +126,30 @@ export default function SeatMapPage() {
       }
 
       const data: SeatMapData = json.data;
-      setSeatMap(data);
+      const normalizedData: SeatMapData =
+        data.tripType === "flight"
+          ? {
+              ...data,
+              selectedClass: normalizedSeatClass,
+              seats: (data.seats ?? []).filter((seat) => seat.class === normalizedSeatClass),
+            }
+          : {
+              ...data,
+              selectedClass: normalizedSeatClass,
+              carriages: (data.carriages ?? [])
+                .filter((carriage) => normalizeSeatClass(carriage.type) === normalizedSeatClass)
+                .map((carriage) => ({
+                  ...carriage,
+                  seats: carriage.seats.filter((seat) => seat.class === normalizedSeatClass),
+                })),
+            };
+
+      setSeatMap(normalizedData);
 
       const flatSeats: Seat[] =
-        data.tripType === "flight"
-          ? (data.seats ?? [])
-          : (data.carriages ?? []).flatMap((c) => c.seats);
+        normalizedData.tripType === "flight"
+          ? (normalizedData.seats ?? [])
+          : (normalizedData.carriages ?? []).flatMap((c) => c.seats);
 
       setSeats(flatSeats);
     } catch (err) {
@@ -130,7 +160,7 @@ export default function SeatMapPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [normalizedSeatClass]);
 
   useEffect(() => {
     if (!tripId) {
@@ -274,6 +304,7 @@ export default function SeatMapPage() {
   }, [isCounting, timeLeft, handleHoldExpired]);
 
   const toggleSeat = useCallback((seat: Seat) => {
+    if (seat.class !== normalizedSeatClass) return;
     if (seat.status === "BOOKED" || seat.status === "HELD") return;
 
     setSelectedIds((prev) => {
@@ -297,7 +328,7 @@ export default function SeatMapPage() {
 
       return next;
     });
-  }, []);
+  }, [normalizedSeatClass]);
 
   const handleContinue = async () => {
     if (selectedIds.size === 0 || !tripId) return;
@@ -312,7 +343,8 @@ export default function SeatMapPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/seats/select`, {
+      // Bước 1: Chọn ghế (hold seats)
+      const selectRes = await fetch(`${API_BASE}/seats/select`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -321,13 +353,14 @@ export default function SeatMapPage() {
         body: JSON.stringify({ tripId, seatIds: [...selectedIds] }),
       });
 
-      const json = await res.json();
-      if (!res.ok) {
-        setApiError(json.message ?? "Đặt ghế thất bại. Vui lòng thử lại.");
+      const selectJson = await selectRes.json();
+      if (!selectRes.ok) {
+        setApiError(selectJson.message ?? "Đặt ghế thất bại. Vui lòng thử lại.");
+        setIsProcessing(false);
         return;
       }
 
-      const confirmed: Seat[] = json.data?.selectedSeats ?? [];
+      const confirmed: Seat[] = selectJson.data?.selectedSeats ?? [];
       setSeats((prev) =>
         prev.map((seat) => {
           const updated = confirmed.find((item) => item._id === seat._id);
@@ -335,8 +368,8 @@ export default function SeatMapPage() {
         })
       );
 
-      const bookingType = seatMap?.tripType === "train" ? "TRAIN" : "FLIGHT";
-      const createBookingRes = await fetch(`${API_BASE}/bookings/create`, {
+      // Bước 2: Tạo booking với các ghế đã chọn
+      const bookingRes = await fetch(`${API_BASE}/bookings/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -344,22 +377,20 @@ export default function SeatMapPage() {
         },
         body: JSON.stringify({
           trip_id: tripId,
-          booking_type: bookingType,
-          seats: confirmed.map((seat) => seat._id),
-          passengers: confirmed.map((seat, index) => ({
+          booking_type: normalizedTripType,
+          seats: [...selectedIds],
+          passengers: confirmed.map((seat) => ({
             seat_id: seat._id,
-            passenger_name: `HANH KHACH ${index + 1}`,
-            passenger_id_card: `TEMP-${seat.seat_number}-${Date.now()}-${index + 1}`,
+            passenger_name: "", // Sẽ được điền ở trang passenger info
+            passenger_id_card: "",
           })),
         }),
       });
 
-      const bookingJson = await createBookingRes.json();
-      if (!createBookingRes.ok) {
-        setApiError(
-          bookingJson.message ??
-            "Giữ ghế thành công nhưng chưa tạo được booking để chuyển sang nhập thông tin hành khách.",
-        );
+      const bookingJson = await bookingRes.json();
+      if (!bookingRes.ok) {
+        setApiError(bookingJson.message ?? "Tạo booking thất bại. Vui lòng thử lại.");
+        setIsProcessing(false);
         return;
       }
 
@@ -372,23 +403,23 @@ export default function SeatMapPage() {
 
       if (!bookingId) {
         setApiError("Không lấy được mã booking để chuyển sang trang nhập thông tin hành khách.");
+        setIsProcessing(false);
         return;
       }
 
-      router.push(`/user/booking/passenger-info?bookingId=${bookingId}`);
+      // Bước 3: Redirect sang trang nhập thông tin hành khách
+      window.location.href = `/user/booking/passenger-info?bookingId=${bookingId}`;
     } catch {
       setApiError("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
-    } finally {
       setIsProcessing(false);
     }
   };
 
-  const visibleSeats = seats.filter((seat) => seat.class === selectedCabin);
-  const selectedSeats = visibleSeats.filter((seat) => selectedIds.has(seat._id));
+  const selectedSeats = seats.filter((seat) => selectedIds.has(seat._id));
   const totalPrice = selectedSeats.reduce((sum, seat) => sum + getSeatPrice(seat), 0);
 
   const seatRows = new Map<string, Seat[]>();
-  visibleSeats.forEach((seat) => {
+  seats.forEach((seat) => {
     const row = seat.seat_number.replace(/[A-Z]/g, "");
     if (!seatRows.has(row)) seatRows.set(row, []);
     seatRows.get(row)!.push(seat);
@@ -482,7 +513,7 @@ export default function SeatMapPage() {
                   <span className="trip-status">{seatMap.trip.status}</span>
                 </div>
                 <div className="trip-details">
-                  <div className="time-info">
+                    <div className="time-info">
                     <div className="time-item">
                       <i className="fa-regular fa-calendar" />
                       <span>{new Date(seatMap.trip.departureTime).toLocaleDateString("vi-VN")}</span>
@@ -502,22 +533,8 @@ export default function SeatMapPage() {
                       </span>
                     </div>
                   </div>
-                  <div
-                    style={{
-                      marginTop: "1rem",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.45rem 0.8rem",
-                      borderRadius: "999px",
-                      background: selectedCabin === "BUSINESS" ? "#eff6ff" : "#f0fdf4",
-                      color: selectedCabin === "BUSINESS" ? "#1d4ed8" : "#15803d",
-                      fontWeight: 700,
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    <i className="fa-solid fa-chair" />
-                    Đang chọn hạng ghế: {selectedCabinLabel}
+                  <div className="seat-class-pill">
+                    <i className="fa-solid fa-couch" /> Đang chọn hạng ghế: {formatSeatClassLabel(normalizedSeatClass)}
                   </div>
                 </div>
               </section>
@@ -535,27 +552,14 @@ export default function SeatMapPage() {
 
             <section className="seat-map-wrapper card">
               <div className="map-header">
-                <h3>Sơ đồ ghế {selectedCabinLabel}</h3>
-                <p>
-                  {visibleSeats.length === 0
-                    ? `Hiện chưa có ghế thuộc hạng ${selectedCabinLabel.toLowerCase()} cho chuyến này.`
-                    : `Vui lòng nhấn vào ghế trống thuộc hạng ${selectedCabinLabel.toLowerCase()} để chọn.`}
-                </p>
+                <h3>Sơ đồ ghế {formatSeatClassLabel(normalizedSeatClass)}</h3>
+                <p>Vui lòng nhấn vào ghế trống thuộc hạng {formatSeatClassLabel(normalizedSeatClass).toLowerCase()} để chọn.</p>
               </div>
               <div className="seat-map-container">
+                {seats.length === 0 ? (
+                  <div className="empty-state">Không có ghế {formatSeatClassLabel(normalizedSeatClass).toLowerCase()} cho chuyến đi này.</div>
+                ) : (
                 <div className="seat-map-grid" id="seat-map-grid">
-                  {visibleSeats.length === 0 && (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        color: "#64748b",
-                        padding: "1.5rem 0",
-                        fontWeight: 500,
-                      }}
-                    >
-                      Không có sơ đồ ghế cho hạng {selectedCabinLabel.toLowerCase()}.
-                    </div>
-                  )}
                   {Array.from(seatRows.entries()).map(([rowLabel, rowSeats]) => {
                     const leftGroup = rowSeats.filter((seat) => ["A", "B"].some((code) => seat.seat_number.endsWith(code)));
                     const rightGroup = rowSeats.filter((seat) => ["C", "D"].some((code) => seat.seat_number.endsWith(code)));
@@ -599,6 +603,7 @@ export default function SeatMapPage() {
                     );
                   })}
                 </div>
+                )}
               </div>
             </section>
           </div>
@@ -668,7 +673,7 @@ export default function SeatMapPage() {
                 <button
                   className="btn btn-primary"
                   id="btn-continue"
-                  disabled={selectedSeats.length === 0 || isProcessing || visibleSeats.length === 0}
+                  disabled={selectedSeats.length === 0 || isProcessing}
                   onClick={handleContinue}
                 >
                   {isProcessing ? (

@@ -21,7 +21,7 @@ export default function ItinerarySection({ data }: ItinerarySectionProps) {
       <div className="overflow-hidden rounded-2xl border border-[#E9EDFF] bg-white shadow-sm">
         <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[120px_1fr_auto_1fr_210px] lg:items-center">
           <div className="text-center">
-            <Plane className="mx-auto mb-2 h-5 w-5 text-[#A33900]" />
+            <Plane className="mx-auto mb-2 h-5 w-5 text-brand-600" />
             <p className="text-[10px] font-bold uppercase text-slate-400">Flight</p>
             <p className="font-ticket-headline mt-1 text-base font-extrabold text-[#141B2B]">
               {data.routeCode}
@@ -34,14 +34,14 @@ export default function ItinerarySection({ data }: ItinerarySectionProps) {
             </h4>
             <p className="mt-1 text-xs font-bold text-slate-500">{data.departureCity}</p>
             <p className="mt-1 text-xs text-slate-400">{data.departureStation}</p>
-            <p className="mt-2 text-sm font-extrabold text-[#A33900]">{data.departureTime}</p>
+            <p className="mt-2 text-sm font-extrabold text-brand-600">{data.departureTime}</p>
             <p className="text-[10px] text-slate-400">{data.departureDate}</p>
           </div>
 
           <div className="flex flex-col items-center justify-center px-2">
             <div className="flex w-full items-center gap-1 opacity-30">
-              <div className="h-1 flex-1 rounded-full bg-[#A33900]" />
-              <ArrowRight className="h-4 w-4 text-[#A33900]" />
+              <div className="h-1 flex-1 rounded-full bg-brand-600" />
+              <ArrowRight className="h-4 w-4 text-brand-600" />
             </div>
             <span className="mt-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
               {data.durationText}
@@ -54,7 +54,7 @@ export default function ItinerarySection({ data }: ItinerarySectionProps) {
             </h4>
             <p className="mt-1 text-xs font-bold text-slate-500">{data.arrivalCity}</p>
             <p className="mt-1 text-xs text-slate-400">{data.arrivalStation}</p>
-            <p className="mt-2 text-sm font-extrabold text-[#A33900]">{data.arrivalTime}</p>
+            <p className="mt-2 text-sm font-extrabold text-brand-600">{data.arrivalTime}</p>
             <p className="text-[10px] text-slate-400">{data.arrivalDate}</p>
           </div>
 

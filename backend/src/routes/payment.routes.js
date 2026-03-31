@@ -3,7 +3,6 @@ const router = express.Router();
 const paymentController = require("../controllers/payment.controller");
 
 // Utility routes
-router.post("/mock-confirm", paymentController.mockConfirm);
 router.post("/webhook", paymentController.paymentWebhook);
 
 // VNPay routes

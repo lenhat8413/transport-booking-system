@@ -199,7 +199,13 @@ async function finalizePayment({ payment, status, gatewayPayload, transactionId 
 
     await Seat.updateMany(
       { held_by_booking_id: booking._id },
-      { $set: { status: "BOOKED" } }
+      {
+        $set: {
+          status: "BOOKED",
+          held_by: null,
+          hold_expired_at: null,
+        },
+      }
     );
   } else if (status === "FAILED") {
     booking.status = "CANCELLED";
@@ -207,7 +213,14 @@ async function finalizePayment({ payment, status, gatewayPayload, transactionId 
 
     await Seat.updateMany(
       { held_by_booking_id: booking._id },
-      { $set: { status: "AVAILABLE", held_by_booking_id: null } }
+      {
+        $set: {
+          status: "AVAILABLE",
+          held_by: null,
+          held_by_booking_id: null,
+          hold_expired_at: null,
+        },
+      }
     );
   }
 
@@ -722,45 +735,6 @@ exports.vnpayIpn = async (req, res) => {
   } catch (error) {
     console.error("VNPay IPN error:", error);
     return res.status(200).json({ RspCode: "99", Message: "Unknown error" });
-  }
-};
-
-exports.mockConfirm = async (req, res) => {
-  try {
-    const { booking_id, status } = req.body || {};
-
-    if (!booking_id || !status) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing booking_id or status",
-      });
-    }
-
-    const payment = await Payment.findOne({
-      booking_id,
-      status: "PENDING",
-    }).sort({ createdAt: -1 });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found or already processed",
-      });
-    }
-
-    return exports.paymentWebhook(
-      {
-        body: {
-          transaction_id: payment._id.toString(),
-          status: status === "SUCCESS" ? "SUCCESS" : "FAILED",
-          gateway_payload: { mock: true },
-        },
-      },
-      res
-    );
-  } catch (error) {
-    console.error("Mock confirm error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

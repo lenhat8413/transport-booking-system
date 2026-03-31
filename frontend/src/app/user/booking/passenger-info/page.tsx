@@ -6,11 +6,9 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Save, User, Mail, Phone, Calendar, Users, CreditCard, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import BookingSteps from '@/components/booking/BookingSteps';
 import TripDetailsCard from '@/components/booking/TripDetailsCard';
-import api from '@/lib/api';
-import { isAuthenticated } from '@/lib/auth';
-import { getBookingDetails, savePassengerInfo } from '@/lib/api';
+import { getBookingDetails, getCurrentUserProfile, savePassengerInfo } from '@/lib/api';
 import { useBookingStore } from '@/store/bookingStore';
-import type { BookingDetails, PassengerDetail } from '@/types';
+import type { BookingDetails, UserProfile } from '@/types';
 
 // Form data types
 interface PassengerFormData {
@@ -27,35 +25,29 @@ interface ContactFormData {
   email: string;
 }
 
-interface UserProfile {
-  full_name?: string;
-  email?: string;
-  phone?: string;
-  date_of_birth?: string;
-  gender?: 'Nam' | 'Nữ' | 'Khác';
-  id_card?: string;
-  passport?: string;
+function toDateInputValue(value?: string | null): string {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  return parsed.toISOString().slice(0, 10);
 }
 
-function normalizePassengerName(value?: string) {
-  const trimmed = value?.trim() ?? '';
-  return /^HANH KHACH \d+$/i.test(trimmed) ? '' : trimmed;
-}
+function mapProfileGender(value?: string | null): PassengerFormData['gender'] | undefined {
+  if (!value) return undefined;
 
-function normalizePassengerId(value?: string) {
-  const trimmed = value?.trim() ?? '';
-  return trimmed.startsWith('TEMP-') ? '' : trimmed;
-}
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'nam' || normalized === 'male') return 'MALE';
+  if (normalized === 'nữ' || normalized === 'nu' || normalized === 'female') return 'FEMALE';
+  if (normalized === 'khác' || normalized === 'khac' || normalized === 'other') return 'OTHER';
 
-function mapProfileGender(value?: UserProfile['gender']): PassengerFormData['gender'] {
-  if (value === 'Nam') return 'MALE';
-  if (value === 'Nữ') return 'FEMALE';
-  if (value === 'Khác') return 'OTHER';
   return undefined;
-}
-
-function getProfileDocument(profile?: UserProfile | null) {
-  return profile?.id_card?.trim() || profile?.passport?.trim() || '';
 }
 
 function PassengerInfoContent() {
@@ -82,6 +74,26 @@ function PassengerInfoContent() {
 
   // Form validation errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCurrentUserProfile()
+      .then((profile) => {
+        if (!cancelled) {
+          setUserProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUserProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!bookingId) {
@@ -113,74 +125,73 @@ function PassengerInfoContent() {
     })();
   }, [bookingId, bookingData, setBookingId, setBookingData]);
 
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      setUserProfile(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { data } = await api.get<{ data?: UserProfile }>('/auth/profile');
-        if (!cancelled) {
-          setUserProfile(data?.data ?? null);
-        }
-      } catch {
-        if (!cancelled) {
-          setUserProfile(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Initialize passenger forms when booking data is loaded
   useEffect(() => {
     if (booking?.passengers && booking.passengers.length > 0) {
-      // Pre-fill forms with existing passenger data
-      const initialForms = booking.passengers.map((p, idx) => ({
+      const initialForms = booking.passengers.map(p => ({
         seat_id: p.seat_info?.id ?? '',
-        passenger_name:
-          normalizePassengerName(p.passenger_name) ||
-          (idx === 0 ? userProfile?.full_name?.trim() ?? '' : ''),
-        passenger_id_card:
-          normalizePassengerId(p.id_card ?? '') ||
-          (idx === 0 ? getProfileDocument(userProfile) : ''),
-        date_of_birth:
-          idx === 0 && userProfile?.date_of_birth
-            ? new Date(userProfile.date_of_birth).toISOString().slice(0, 10)
-            : undefined,
-        gender: idx === 0 ? mapProfileGender(userProfile?.gender) : undefined,
-        passenger_type: 'ADULT' as 'ADULT' | 'CHILD' | 'INFANT',
+        passenger_name: p.passenger_name,
+        passenger_id_card: p.id_card ?? '',
+        date_of_birth: p.date_of_birth ? p.date_of_birth.slice(0, 10) : '',
+        gender: p.gender,
+        passenger_type: p.passenger_type ?? 'ADULT',
       }));
       setPassengerForms(initialForms);
-    } else if (booking) {
-      // Initialize empty forms based on seats from trip info
-      // This would need seat data from the booking flow
-      setPassengerForms([{
-        seat_id: '',
-        passenger_name: userProfile?.full_name?.trim() ?? '',
-        passenger_id_card: getProfileDocument(userProfile),
-        date_of_birth: userProfile?.date_of_birth
-          ? new Date(userProfile.date_of_birth).toISOString().slice(0, 10)
-          : undefined,
-        gender: mapProfileGender(userProfile?.gender),
-        passenger_type: 'ADULT',
-      }]);
+
+      const firstContact = booking.passengers.find(
+        (passenger) => passenger.contact_info?.phone || passenger.contact_info?.email,
+      )?.contact_info ?? booking.booking_summary.booking_contact;
+
+      if (firstContact) {
+        setContactForm({
+          phone: firstContact.phone ?? '',
+          email: firstContact.email ?? '',
+        });
+      }
     }
-  }, [booking, userProfile]);
+  }, [booking]);
 
   useEffect(() => {
+    if (!booking || !userProfile) return;
+
     setContactForm((prev) => ({
-      phone: prev.phone || userProfile?.phone?.trim() || '',
-      email: prev.email || userProfile?.email?.trim() || '',
+      phone:
+        prev.phone ||
+        booking.booking_summary.booking_contact?.phone ||
+        userProfile.preferences?.notifications?.contact_phone ||
+        userProfile.phone ||
+        '',
+      email:
+        prev.email ||
+        booking.booking_summary.booking_contact?.email ||
+        userProfile.preferences?.notifications?.contact_email ||
+        userProfile.email ||
+        '',
     }));
-  }, [userProfile]);
+
+    setPassengerForms((prev) =>
+      prev.map((passenger, idx) => {
+        if (idx !== 0) return passenger;
+
+        return {
+          ...passenger,
+          passenger_name:
+            passenger.passenger_name ||
+            booking.booking_summary.booking_contact?.full_name ||
+            userProfile.full_name ||
+            '',
+          passenger_id_card:
+            passenger.passenger_id_card ||
+            booking.booking_summary.booking_contact?.id_card ||
+            userProfile.id_card ||
+            userProfile.passport ||
+            '',
+          date_of_birth: passenger.date_of_birth || toDateInputValue(userProfile.date_of_birth),
+          gender: passenger.gender || mapProfileGender(userProfile.gender),
+        };
+      }),
+    );
+  }, [booking, userProfile]);
 
   // Validate form
   const validateForm = (): boolean => {
@@ -239,23 +250,6 @@ function PassengerInfoContent() {
         delete newErrors[`passenger.${index}.${field}`];
         return newErrors;
       });
-    }
-  };
-
-  // Add new passenger
-  const addPassenger = () => {
-    setPassengerForms(prev => [...prev, {
-      seat_id: '',
-      passenger_name: '',
-      passenger_id_card: '',
-      passenger_type: 'ADULT',
-    }]);
-  };
-
-  // Remove passenger
-  const removePassenger = (index: number) => {
-    if (passengerForms.length > 1) {
-      setPassengerForms(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -365,12 +359,15 @@ function PassengerInfoContent() {
               className="card"
             >
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
-                  <User className="w-5 h-5 text-orange-500" />
+                <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
+                  <User className="w-5 h-5 text-brand-500" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">Thông tin liên hệ</h3>
-                  <p className="text-sm text-gray-500">Chúng tôi sẽ gửi thông tin đặt vé đến thông tin này</p>
+                  <p className="text-sm text-gray-500">
+                    Chúng tôi sẽ gửi thông tin đặt vé đến thông tin này
+                    {userProfile ? ' và đã tự điền từ tài khoản khi có thể.' : '.'}
+                  </p>
                 </div>
               </div>
 
@@ -455,13 +452,10 @@ function PassengerInfoContent() {
                         <CreditCard className="w-4 h-4 text-gray-500" />
                         Hành khách #{idx + 1}
                       </h4>
-                      {passengerForms.length > 1 && (
-                        <button
-                          onClick={() => removePassenger(idx)}
-                          className="text-sm text-red-500 hover:text-red-600 transition-colors"
-                        >
-                          Xóa
-                        </button>
+                      {booking.passengers[idx]?.seat_info?.number && (
+                        <span className="text-sm font-medium text-brand-600">
+                          Ghế {booking.passengers[idx].seat_info?.number}
+                        </span>
                       )}
                     </div>
 
@@ -522,6 +516,7 @@ function PassengerInfoContent() {
                           </div>
                           <input
                             type="date"
+                            value={passenger.date_of_birth ?? ''}
                             onChange={(e) => handlePassengerChange(idx, 'date_of_birth', e.target.value)}
                             className="input pl-10"
                           />
@@ -538,9 +533,9 @@ function PassengerInfoContent() {
                             <Users className="w-5 h-5" />
                           </div>
                           <select
+                            value={passenger.gender ?? ''}
                             onChange={(e) => handlePassengerChange(idx, 'gender', e.target.value)}
                             className="input pl-10"
-                            defaultValue=""
                           >
                             <option value="" disabled>Chọn giới tính</option>
                             <option value="MALE">Nam</option>
@@ -577,13 +572,6 @@ function PassengerInfoContent() {
                 ))}
               </div>
 
-              {/* Add passenger button */}
-              <button
-                onClick={addPassenger}
-                className="mt-4 w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-medium hover:border-brand-400 hover:text-brand-500 transition-colors"
-              >
-                + Thêm hành khách
-              </button>
             </motion.div>
           </div>
 
