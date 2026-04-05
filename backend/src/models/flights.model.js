@@ -24,6 +24,10 @@ const flightSchema = new mongoose.Schema({
     enum: ["SCHEDULED", "DELAYED", "CANCELLED", "COMPLETED"],
     default: "SCHEDULED",
   },
+  prices: {
+    economy: { type: Number, required: true, default: 1500000 },
+    business: { type: Number, required: true, default: 3000000 }
+  }
 });
 
 const Flight = mongoose.model("Flight", flightSchema);

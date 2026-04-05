@@ -1,55 +1,678 @@
 const Booking = require("../models/bookings.model");
 const Payment = require("../models/payments.model");
+const Seat = require("../models/seats.model");
+const Ticket = require("../models/tickets.model");
+const Voucher = require("../models/vouchers.model");
+const FlightFare = require("../models/flightFares.model");
+const Flight = require("../models/flights.model");
+const TrainTrip = require("../models/trainTrips.model");
+const TrainCarriage = require("../models/trainCarriages.model");
+const Airport = require("../models/airports.model");
+const TrainStation = require("../models/trainStations.model");
+const Airline = require("../models/airlines.model");
+const Train = require("../models/trains.model");
 
-// Tạo một booking mới
+const SEAT_SELECTION_FEE_BY_CLASS = {
+  ECONOMY: 450000,
+  BUSINESS: 0,
+};
+
+function getSeatSelectionFee(seatClass) {
+  return SEAT_SELECTION_FEE_BY_CLASS[seatClass] ?? 0;
+}
+
+function mapBookingStatus(status) {
+  if (status === "CONFIRMED") return "paid";
+  if (status === "WAITING_PAYMENT" || status === "PENDING") return "pending";
+  return "expired";
+}
+
+function calculateDurationMinutes(startTime, endTime) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
+async function buildBookingTripSummary(booking) {
+  if (booking.booking_type === "FLIGHT") {
+    const flight = await Flight.findById(booking.trip_id)
+      .populate("airline_id", "name iata_code")
+      .populate("departure_airport_id", "name city iata_code")
+      .populate("arrival_airport_id", "name city iata_code")
+      .lean();
+
+    if (!flight) return null;
+
+    return {
+      carrier_name: flight.airline_id?.name || flight.flight_number || "Chuyen bay",
+      trip_code: flight.flight_number || "",
+      departure_name: flight.departure_airport_id?.name || "",
+      departure_city: flight.departure_airport_id?.city || "",
+      departure_code: flight.departure_airport_id?.iata_code || "",
+      arrival_name: flight.arrival_airport_id?.name || "",
+      arrival_city: flight.arrival_airport_id?.city || "",
+      arrival_code: flight.arrival_airport_id?.iata_code || "",
+      departure_time: flight.departure_time,
+      arrival_time: flight.arrival_time,
+      duration_minutes: calculateDurationMinutes(
+        flight.departure_time,
+        flight.arrival_time,
+      ),
+    };
+  }
+
+  const trainTrip = await TrainTrip.findById(booking.trip_id)
+    .populate("train_id", "name train_number")
+    .populate("departure_station_id", "name city")
+    .populate("arrival_station_id", "name city")
+    .lean();
+
+  if (!trainTrip) return null;
+
+  return {
+    carrier_name:
+      trainTrip.train_id?.name ||
+      trainTrip.train_id?.train_number ||
+      "Chuyen tau",
+    trip_code:
+      trainTrip.train_id?.train_number ||
+      trainTrip.train_id?.name ||
+      "",
+    departure_name: trainTrip.departure_station_id?.name || "",
+    departure_city: trainTrip.departure_station_id?.city || "",
+    departure_code: trainTrip.departure_station_id?.name || "",
+    arrival_name: trainTrip.arrival_station_id?.name || "",
+    arrival_city: trainTrip.arrival_station_id?.city || "",
+    arrival_code: trainTrip.arrival_station_id?.name || "",
+    departure_time: trainTrip.departure_time,
+    arrival_time: trainTrip.arrival_time,
+    duration_minutes: calculateDurationMinutes(
+      trainTrip.departure_time,
+      trainTrip.arrival_time,
+    ),
+  };
+}
+
+async function resolveFlightBasePrice(tripId, seatClass, cache) {
+  if (cache[seatClass] != null) {
+    return cache[seatClass];
+  }
+
+  const fare = await FlightFare.findOne({
+    flight_id: tripId,
+    cabin_class: seatClass,
+    is_active: true,
+  }).lean();
+
+  if (fare) {
+    const effectivePrice = fare.promo_price != null ? fare.promo_price : fare.base_price;
+    cache[seatClass] = effectivePrice;
+    return effectivePrice;
+  }
+
+  const flight = await Flight.findById(tripId).lean();
+  if (!flight) return null;
+
+  const fallbackPrice =
+    seatClass === "BUSINESS"
+      ? flight.prices?.business
+      : flight.prices?.economy;
+
+  cache[seatClass] = typeof fallbackPrice === "number" ? fallbackPrice : null;
+  return cache[seatClass];
+}
+
+async function resolveTrainBasePrice(seat, cache) {
+  const carriageId = seat.carriage_id ? seat.carriage_id.toString() : null;
+  if (!carriageId) return null;
+
+  if (cache[carriageId] != null) {
+    return cache[carriageId];
+  }
+
+  const carriage = await TrainCarriage.findById(carriageId).lean();
+  cache[carriageId] = carriage?.base_price ?? null;
+  return cache[carriageId];
+}
+
+async function buildFlightBookingView(booking) {
+  const flight = await Flight.findById(booking.trip_id).lean();
+  if (!flight) return null;
+
+  const [departureAirport, arrivalAirport, airline] = await Promise.all([
+    Airport.findById(flight.departure_airport_id).lean(),
+    Airport.findById(flight.arrival_airport_id).lean(),
+    Airline.findById(flight.airline_id).lean(),
+  ]);
+
+  const origin = departureAirport?.city || "Chưa xác định";
+  const destination = arrivalAirport?.city || "Chưa xác định";
+
+  return {
+    id: booking._id,
+    code: booking.booking_code,
+    route: `${origin} \u2192 ${destination}`,
+    origin,
+    destination,
+    bookingDate: booking.created_at,
+    departureDate: flight.departure_time,
+    arrivalDate: flight.arrival_time,
+    status: mapBookingStatus(booking.status),
+    transportType: "flight",
+    carrier: airline?.name || flight.flight_number || "Chuyến bay",
+    price: booking.total_amount,
+  };
+}
+
+async function buildTrainBookingView(booking) {
+  const trainTrip = await TrainTrip.findById(booking.trip_id).lean();
+  if (!trainTrip) return null;
+
+  const [departureStation, arrivalStation, train] = await Promise.all([
+    TrainStation.findById(trainTrip.departure_station_id).lean(),
+    TrainStation.findById(trainTrip.arrival_station_id).lean(),
+    Train.findById(trainTrip.train_id).lean(),
+  ]);
+
+  const origin = departureStation?.city || departureStation?.name || "Chưa xác định";
+  const destination = arrivalStation?.city || arrivalStation?.name || "Chưa xác định";
+
+  return {
+    id: booking._id,
+    code: booking.booking_code,
+    route: `${origin} \u2192 ${destination}`,
+    origin,
+    destination,
+    bookingDate: booking.created_at,
+    departureDate: trainTrip.departure_time,
+    arrivalDate: trainTrip.arrival_time,
+    status: mapBookingStatus(booking.status),
+    transportType: "train",
+    carrier: train?.name || train?.train_number || "Chuyến tàu",
+    price: booking.total_amount,
+  };
+}
+
+const getRequestUserId = (req) => (req.user && req.user.userId ? req.user.userId : null);
+const getAuthFailureMessage = (req) =>
+  req.authError || "Vui lòng đăng nhập để truy cập booking này!";
+
+
+// Tạo booking mới
 exports.createBooking = async (req, res) => {
-  const { user_id, booking_code, booking_type, total_amount, status } =
-    req.body;
-
   try {
-    const booking = new Booking({
-      user_id,
-      booking_code,
-      booking_type,
-      total_amount,
-      status,
-      created_at: new Date(),
+    const { trip_id, booking_type, seats, passengers } = req.body;
+    const user_id = getRequestUserId(req);
+
+    // 1. Kiểm tra trạng thái hàng ghế
+    const seatDocs = await Seat.find({ _id: { $in: seats } });
+    if (seatDocs.length !== seats.length) {
+      return res.status(400).json({ message: 'Một hoặc nhiều mã ghế không tồn tại.' });
+    }
+
+    let total_amount = 0;
+    const now = new Date();
+
+    // Map để tra cứu giá từng ghế nhanh hơn (seat_id -> final_price)
+    const seatPriceMap = {};
+    const flightFareCache = {};
+    const trainCarriagePriceCache = {};
+
+    for (let seat of seatDocs) {
+      if (seat.status === 'BOOKED') {
+        return res.status(400).json({ message: `Ghế ${seat.seat_number} đã có người đặt.` });
+      }
+
+      if (seat.status === 'HELD') {
+        const heldBySameUser =
+          user_id &&
+          seat.held_by &&
+          seat.held_by.toString() === user_id.toString();
+        const holdStillValid =
+          seat.hold_expired_at && new Date(seat.hold_expired_at) > now;
+
+        if (!heldBySameUser || !holdStillValid) {
+          return res.status(400).json({ message: `Ghế ${seat.seat_number} đang được người khác giữ.` });
+        }
+      }
+
+      // 2. Query bảng giá từ FlightFare theo chuyến bay + hạng ghế
+      // Chỉ áp dụng cho FLIGHT; TRAIN dùng base_price của TrainCarriage
+      let basePrice = 0;
+
+      if (booking_type === 'FLIGHT') {
+        const resolvedFlightPrice = await resolveFlightBasePrice(
+          trip_id,
+          seat.class,
+          flightFareCache,
+        );
+
+        if (resolvedFlightPrice == null) {
+          return res.status(400).json({
+            message: `Không tìm thấy bảng giá cho hạng ${seat.class} trên chuyến bay này. Vui lòng liên hệ quản trị viên.`,
+          });
+        }
+
+        // Ưu tiên giá khuyến mãi, nếu không có thì dùng giá gốc
+        basePrice = resolvedFlightPrice;
+      } else {
+        const resolvedTrainPrice = await resolveTrainBasePrice(
+          seat,
+          trainCarriagePriceCache,
+        );
+
+        if (resolvedTrainPrice == null) {
+          return res.status(400).json({
+            message: `Không tìm thấy giá gốc cho ghế ${seat.seat_number}.`,
+          });
+        }
+
+        basePrice = resolvedTrainPrice;
+      }
+
+      const seatSelectionFee = getSeatSelectionFee(seat.class);
+      const finalPrice = basePrice + seatSelectionFee;
+
+      seatPriceMap[seat._id.toString()] = {
+        basePrice,
+        seatSelectionFee,
+        finalPrice,
+      };
+      total_amount += finalPrice;
+    }
+
+    // 3. Tạo Booking
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    const newBooking = new Booking({
+      user_id: user_id,
+      booking_code: "BKG" + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000),
+      booking_type: booking_type,
+      trip_id: trip_id,
+      total_amount: total_amount,
+      status: 'WAITING_PAYMENT',
+      expires_at: expiresAt,
     });
 
-    await booking.save();
-    res.status(201).json({ message: "Booking created successfully!" });
+    await newBooking.save();
+
+    // 4. Tạo Ticket với final_price đúng từ bảng giá tra cứu được
+    const ticketPromises = passengers.map(async (p) => {
+      const pricing = seatPriceMap[p.seat_id.toString()] || {
+        basePrice: 0,
+        seatSelectionFee: 0,
+        finalPrice: 0,
+      };
+
+      return Ticket.create({
+        booking_id: newBooking._id,
+        seat_id: p.seat_id,
+        passenger_name: p.passenger_name ?? "",
+        passenger_id_card: p.passenger_id_card ?? "",
+        base_price: pricing.basePrice,
+        seat_selection_fee: pricing.seatSelectionFee,
+        final_price: pricing.finalPrice,
+      });
+    });
+
+    await Promise.all(ticketPromises);
+
+    // 5. Khóa ghế để ngăn người khác đặt trùng (chỉ cập nhật held_by_booking_id nếu ghế đã HELD)
+    await Seat.updateMany(
+      { _id: { $in: seats } },
+      {
+        $set: {
+          status: "HELD",
+          held_by: user_id,
+          held_by_booking_id: newBooking._id,
+          hold_expired_at: expiresAt,
+        },
+      }
+    );
+
+    res.status(201).json({
+      message: "Booking created successfully, pending for payment",
+      booking: newBooking,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Internal server error!" });
   }
 };
 
 // Xử lý thanh toán
 exports.processPayment = async (req, res) => {
-  const { booking_id, method, transaction_id, amount, status } = req.body;
-
   try {
+    const { booking_id, method, transaction_id, amount, status } = req.body;
+    const requestUserId = getRequestUserId(req);
+
+    // kiểm tra booking tồn tại
+    const booking = await Booking.findById(booking_id);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found!" });
+    }
+
+    // kiểm tra booking thuộc user
+    if (booking.user_id && !requestUserId) {
+      return res.status(401).json({
+        message: getAuthFailureMessage(req),
+      });
+    }
+
+    if (booking.user_id && booking.user_id.toString() !== requestUserId) {
+      return res.status(403).json({
+        message: "You are not allowed to pay for this booking",
+      });
+    }
+
     const payment = new Payment({
       booking_id,
       method,
       transaction_id,
-      amount,
+      amount: amount ?? booking.total_amount,
       status,
-      paid_at: new Date(),
+      paid_at: status === "SUCCESS" ? new Date() : undefined,
     });
 
     await payment.save();
-    res.status(200).json({ message: "Payment processed successfully!" });
+
+    // cập nhật trạng thái booking nếu thanh toán thành công
+    if (status === "SUCCESS") {
+      booking.status = "CONFIRMED";
+      await booking.save();
+      await Seat.updateMany(
+        { held_by_booking_id: booking._id },
+        {
+          $set: {
+            status: "BOOKED",
+            held_by: null,
+            hold_expired_at: null,
+          },
+        },
+      );
+    } else if (status === "FAILED") {
+      booking.status = "CANCELLED";
+      await booking.save();
+      await Seat.updateMany(
+        { held_by_booking_id: booking._id },
+        {
+          $set: {
+            status: "AVAILABLE",
+            held_by: null,
+            held_by_booking_id: null,
+            hold_expired_at: null,
+          },
+        },
+      );
+    }
+
+    res.status(200).json({
+      message: "Payment processed successfully!",
+      payment,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Internal server error!" });
   }
 };
 
-// Lấy tất cả booking của người dùng
+// Lấy tất cả booking của user đang đăng nhập
 exports.getAllBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({});
-    res.status(200).json({ bookings });
+    const requestUserId = getRequestUserId(req);
+
+    if (!requestUserId) {
+      return res.status(401).json({ message: getAuthFailureMessage(req) });
+    }
+
+    const bookings = await Booking.find({
+      user_id: requestUserId,
+    })
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = (
+      await Promise.all(
+        bookings.map((booking) =>
+          booking.booking_type === "FLIGHT"
+            ? buildFlightBookingView(booking)
+            : buildTrainBookingView(booking),
+        ),
+      )
+    ).filter(Boolean);
+    res.status(200).json({
+      count: data.length,
+      data,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Internal server error!" });
+  }
+};
+// Áp dụng Voucher vào Booking
+exports.applyVoucher = async (req, res) => {
+  try {
+    const { booking_id, voucher_code } = req.body;
+
+    // KAN-209: Kiểm tra đầu vào tồn tại và tìm Booking
+    if (!booking_id || !voucher_code) {
+      return res.status(400).json({ success: false, message: "Thiếu mã booking hoặc mã giảm giá!" });
+    }
+
+    const Booking = require("../models/bookings.model");
+    const booking = await Booking.findById(booking_id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy thông tin chuyến đi (booking)!" });
+    }
+
+    // Check nếu đã áp dụng voucher rồi
+    if (booking.voucher_applied) {
+      return res.status(400).json({ success: false, message: "Booking này đã được áp dụng mã giảm giá. Không thể áp dụng thêm!" });
+    }
+
+    // Tường lửa chống lấy trộm / sửa booking người khác
+    const requestUserId = getRequestUserId(req);
+    if (booking.user_id && !requestUserId) {
+      return res.status(401).json({ success: false, message: getAuthFailureMessage(req) });
+    }
+    if (booking.user_id && booking.user_id.toString() !== requestUserId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền sửa đổi booking này!" });
+    }
+
+    // Chặn áp dụng lên booking đã nộp tiền
+    if (booking.status !== "WAITING_PAYMENT" && booking.status !== "PENDING") {
+      return res.status(400).json({ success: false, message: "Booking đã hết hạn, đã hủy hoặc đã hoàn tất thanh toán!" });
+    }
+
+    // KAN-209 & KAN-210: Kiểm tra điều kiện khắt khe của voucher
+    const voucher = await Voucher.findOne({ code: voucher_code.toUpperCase() });
+
+    if (!voucher) {
+      return res.status(404).json({ success: false, message: "Mã giảm giá không tồn tại!" });
+    }
+
+    if (!voucher.is_active || voucher.used_count >= voucher.usage_limit) {
+      return res.status(400).json({ success: false, message: "Mã giảm giá đã hết lượt sử dụng hoặc bị vô hiệu hóa!" });
+    }
+
+    const now = new Date();
+    if (now > voucher.expiry_date) {
+      return res.status(400).json({ success: false, message: "Mã giảm giá đã hết hạn sử dụng!" });
+    }
+
+    if (booking.total_amount < voucher.min_order_value) {
+      return res.status(400).json({ success: false, message: `Mã giảm giá chỉ áp dụng cho đơn hàng từ ${voucher.min_order_value.toLocaleString()} VND!` });
+    }
+
+    // KAN-211: Tính toán số tiền được giảm giá
+    let discount_amount = 0;
+    if (voucher.discount_type === "PERCENTAGE") {
+      // Tính theo %
+      discount_amount = (booking.total_amount * voucher.discount_value) / 100;
+      // Áp trần tối đa
+      if (voucher.max_discount && discount_amount > voucher.max_discount) {
+        discount_amount = voucher.max_discount;
+      }
+    } else {
+      // FIXED - Trừ thẳng tiền mặt
+      discount_amount = voucher.discount_value;
+    }
+
+    // Chặn số âm (Nếu voucher 500k áp cho hóa đơn 100k)
+    if (discount_amount >= booking.total_amount) {
+      discount_amount = booking.total_amount;
+    }
+
+    const old_total = booking.total_amount;
+    const new_total = booking.total_amount - discount_amount;
+
+    // KAN-212: Tiêu hao lượt dùng voucher & cập nhật hóa đơn
+    voucher.used_count += 1;
+    await voucher.save();
+
+    booking.total_amount = new_total;
+    booking.voucher_applied = voucher.code; // Lưu dấu vết đã áp dụng
+    await booking.save(); // Lưu giá mới vào DB
+
+    // Phản hồi về frontend thành công
+    res.status(200).json({
+      success: true,
+      message: "Áp dụng mã giảm giá thành công!",
+      data: {
+        booking_id: booking._id,
+        voucher_code: voucher.code,
+        old_total: old_total,
+        discount_amount: discount_amount,
+        final_total: new_total
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi áp dụng voucher!" });
+  }
+};
+
+
+// ─── KAN-213: Xem lại toàn bộ thông tin Booking trước khi Checkout ──────────
+exports.getBookingById = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    // KAN-214 & KAN-215: Tìm kiếm Booking và kiểm tra tính hợp lệ
+    const booking = await Booking.findById(bookingId).lean();
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy thông tin chuyến đi (booking)!" });
+    }
+
+    const requestUserId = getRequestUserId(req);
+    if (booking.user_id && !requestUserId) {
+      return res.status(401).json({ success: false, message: getAuthFailureMessage(req) });
+    }
+    if (booking.user_id && booking.user_id.toString() !== requestUserId) {
+      return res.status(403).json({ success: false, message: "Bạn không có quyền truy cập thông tin booking này!" });
+    }
+
+    // KAN-216: Gom thông tin hành khách và ghế ngồi từ bảng Tickets
+    const tripSummary = await buildBookingTripSummary(booking);
+
+    const tickets = await Ticket.find({ booking_id: booking._id })
+      .populate({
+        path: 'seat_id',
+        select: 'seat_number class price_modifier status'
+      })
+      .lean();
+
+    let passengerDetails = [];
+    let totalDiscount = 0;
+    let baseFareAmount = 0;
+    let seatSelectionAmount = 0;
+
+    // KAN-217: Ghép nối dữ liệu phụ (tính năng Voucher tương lai)
+    if (tickets && tickets.length > 0) {
+      passengerDetails = tickets.map(ticket => {
+        const seatSelectionFee = ticket.seat_selection_fee ?? 0;
+        const basePrice = ticket.base_price ?? ticket.final_price ?? 0;
+
+        return {
+          ticket_id: ticket._id,
+          passenger_name: ticket.passenger_name,
+          id_card: ticket.passenger_id_card,
+          seat_info: ticket.seat_id ? {
+            id: ticket.seat_id._id,
+            number: ticket.seat_id.seat_number,
+            class: ticket.seat_id.class,
+            additional_fee: seatSelectionFee
+          } : null,
+          base_price: basePrice,
+          seat_selection_fee: seatSelectionFee,
+          final_price: ticket.final_price,
+          date_of_birth: ticket.date_of_birth,
+          gender: ticket.gender,
+          passenger_type: ticket.passenger_type,
+          contact_info: ticket.contact_info
+        };
+      });
+
+      baseFareAmount = passengerDetails.reduce(
+        (sum, passenger) => sum + (passenger.base_price || 0),
+        0,
+      );
+      seatSelectionAmount = passengerDetails.reduce(
+        (sum, passenger) => sum + (passenger.seat_selection_fee || 0),
+        0,
+      );
+      const originalSubtotal = passengerDetails.reduce(
+        (sum, passenger) => sum + (passenger.final_price || 0),
+        0,
+      );
+      totalDiscount = Math.max(0, originalSubtotal - booking.total_amount);
+    }
+
+    // KAN-218: Gói ghém toàn bộ dữ liệu trả về cho giao diện
+    res.status(200).json({
+      success: true,
+      data: {
+        booking_summary: {
+          id: booking._id,
+          code: booking.booking_code,
+          booking_contact: booking.booking_contact,
+          type: booking.booking_type,
+          trip_id: booking.trip_id,
+          status: booking.status,
+          created_at: booking.created_at,
+          expires_at: booking.expires_at,
+          carrier_name: tripSummary?.carrier_name || "",
+          trip_code: tripSummary?.trip_code || "",
+          departure_name: tripSummary?.departure_name || "",
+          departure_city: tripSummary?.departure_city || "",
+          departure_code: tripSummary?.departure_code || "",
+          arrival_name: tripSummary?.arrival_name || "",
+          arrival_city: tripSummary?.arrival_city || "",
+          arrival_code: tripSummary?.arrival_code || "",
+          departure_time: tripSummary?.departure_time || null,
+          arrival_time: tripSummary?.arrival_time || null,
+          duration_minutes: tripSummary?.duration_minutes ?? null,
+        },
+        financials: {
+          base_fare_amount: baseFareAmount,
+          seat_selection_amount: seatSelectionAmount,
+          subtotal_amount: baseFareAmount + seatSelectionAmount,
+          total_amount: booking.total_amount, // Đã trừ tiền từ hàm Voucher trước đó
+          discount_applied: totalDiscount
+        },
+        passengers: passengerDetails
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Lỗi hệ thống khi tải thông tin xác nhận!" });
   }
 };

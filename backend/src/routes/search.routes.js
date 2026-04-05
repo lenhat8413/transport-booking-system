@@ -1,11 +1,19 @@
 const express = require("express");
+const searchController = require("../controllers/search.controller");
+
 const router = express.Router();
-const searchController = require("../controllers/search.controller"); // Import controller
 
-// Tìm kiếm chuyến bay
-router.get("/flights", searchController.searchFlights);
+router.get("/flights/locations", searchController.listAirports);
+router.get("/train-trips/locations", searchController.listTrainStations);
 
-// Tìm kiếm vé
-router.get("/tickets", searchController.searchTickets);
+router.get("/flights/search", searchController.searchFlights);
+router.get("/train-trips/search", searchController.searchTrainTrips);
+router.get("/home/flight-deals", searchController.getHomeFlightDeals);
+
+router.get("/flights/:id/availability", searchController.checkFlightSeats);
+router.get("/train-trips/:id/availability", searchController.checkTrainSeats);
+
+router.get("/flights/:id", searchController.getFlightById);
+router.get("/train-trips/:id", searchController.getTrainTripById);
 
 module.exports = router;

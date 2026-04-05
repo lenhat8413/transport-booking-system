@@ -1,53 +1,77 @@
-const Seat = require("../models/seats.model");
+const seatService = require("../services/seat.service");
+const { SeatServiceError } = require("../services/seat.service");
 
-// Kiểm tra trạng thái ghế
+// Helper: maps a SeatServiceError to the correct HTTP response
+function handleError(res, err, label) {
+	if (err instanceof SeatServiceError) {
+		return res.status(err.statusCode).json({
+			status: "error",
+			...(err.code && { code: err.code }),
+			message: err.message,
+		});
+	}
+	console.error(`[${label}]`, err);
+	return res.status(500).json({ status: "error", message: "Internal server error." });
+}
+
+// GET /api/seats/status/:seatId
 exports.checkSeatStatus = async (req, res) => {
-  const { seatId } = req.params;
-
-  try {
-    const seat = await Seat.findById(seatId);
-    if (!seat) return res.status(404).json({ message: "Seat not found!" });
-
-    res.status(200).json({ status: seat.status });
-  } catch (err) {
-    res.status(500).json({ message: "Internal server error!" });
-  }
+	try {
+		const data = await seatService.getSeatStatus(req.params.seatId);
+		res.status(200).json({ status: "success", data });
+	} catch (err) {
+		handleError(res, err, "checkSeatStatus");
+	}
 };
 
-// Giữ ghế
-exports.holdSeat = async (req, res) => {
-  const { seatId } = req.params;
-
-  try {
-    const seat = await Seat.findById(seatId);
-    if (!seat) return res.status(404).json({ message: "Seat not found!" });
-
-    seat.status = "HELD";
-    seat.held_by_booking_id = req.body.booking_id; // Thêm thông tin booking ID
-    seat.hold_expired_at = new Date().getTime() + 15 * 60 * 1000;
-
-    await seat.save();
-    res.status(200).json({ message: "Seat held successfully!" });
-  } catch (err) {
-    res.status(500).json({ message: "Internal server error!" });
-  }
+// POST /api/seats/hold
+exports.holdSeats = async (req, res) => {
+	try {
+		const data = await seatService.holdSeats({
+			...req.body,
+			userId: req.user.userId,
+		});
+		res.status(200).json({ status: "success", data });
+	} catch (err) {
+		handleError(res, err, "holdSeats");
+	}
 };
 
-// Thả ghế
-exports.releaseSeat = async (req, res) => {
-  const { seatId } = req.params;
+// POST /api/seats/release
+exports.releaseSeats = async (req, res) => {
+	try {
+		const data = await seatService.releaseSeats({
+			...req.body,
+			userId: req.user.userId,
+		});
+		res.status(200).json({ status: "success", data });
+	} catch (err) {
+		handleError(res, err, "releaseSeats");
+	}
+};
 
-  try {
-    const seat = await Seat.findById(seatId);
-    if (!seat) return res.status(404).json({ message: "Seat not found!" });
+// GET /api/seats/map/:tripId
+exports.getSeatMap = async (req, res) => {
+	try {
+			const data = await seatService.getSeatMap(
+				req.params.tripId,
+				req.query.class,
+			);
+			res.status(200).json({ status: "success", data });
+	} catch (err) {
+			handleError(res, err, "getSeatMap");
+	}
+};
 
-    seat.status = "AVAILABLE";
-    seat.held_by_booking_id = null;
-    seat.hold_expired_at = null;
-
-    await seat.save();
-    res.status(200).json({ message: "Seat released successfully!" });
-  } catch (err) {
-    res.status(500).json({ message: "Internal server error!" });
-  }
+// POST /api/seats/select
+exports.selectSeats = async (req, res) => {
+	try {
+		const data = await seatService.selectSeats({
+			...req.body,
+			userId: req.user.userId,
+		});
+		res.status(200).json({ status: "success", data });
+	} catch (err) {
+		handleError(res, err, "selectSeats");
+	}
 };
