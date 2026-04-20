@@ -6,6 +6,7 @@ import Link from "next/link";
 import axios from "axios";
 import { ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import config from "@/config";
 
 export default function ForgotPassword() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function ForgotPassword() {
 
       // Make API request to backend
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`,
+        `${config.apiBaseUrl}/auth/forgot-password`,
         payload
       );
 
