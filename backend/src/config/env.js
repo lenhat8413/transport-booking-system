@@ -16,11 +16,13 @@ const env = {
   seatHoldTtlMinutes: Number(process.env.SEAT_HOLD_TTL_MINUTES || 15),
 
   // Email / SMTP config
-  smtpHost: process.env.SMTP_HOST || "smtp.ethereal.email",
-  smtpPort: Number(process.env.SMTP_PORT || 587),
-  smtpUser: process.env.SMTP_USER || "",
-  smtpPass: process.env.SMTP_PASS || "",
-  emailFrom: process.env.EMAIL_FROM || "no-reply@transport-booking.com",
+  // Support both SMTP_* and legacy MAIL_* variable names
+  smtpHost: process.env.SMTP_HOST || process.env.MAIL_HOST || "smtp.ethereal.email",
+  smtpPort: Number(process.env.SMTP_PORT || process.env.MAIL_PORT || 587),
+  smtpUser: process.env.SMTP_USER || process.env.MAIL_USER || "",
+  smtpPass: process.env.SMTP_PASS || process.env.MAIL_PASSWORD || "",
+  // If EMAIL_FROM not provided, derive from SMTP_USER so only one mail config is needed.
+  emailFrom: process.env.EMAIL_FROM || process.env.SMTP_USER || "no-reply@transport-booking.com",
 
 	// OTP config
 	otpExpiryMinutes: Number(process.env.OTP_EXPIRY_MINUTES || 15),
