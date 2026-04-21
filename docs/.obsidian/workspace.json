@@ -1,0 +1,190 @@
+{
+  "main": {
+    "id": "018b42d632cfb38e",
+    "type": "split",
+    "children": [
+      {
+        "id": "fdfd495c766b035a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "44041d014b540b90",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "12-dev-guide/04-ui-pages.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "04-ui-pages"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8901b4e2d8047c82",
+    "type": "split",
+    "children": [
+      {
+        "id": "ff924d0f8ea48864",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3547456374f40c01",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "ecf2b4bbdd4d41c4",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "e9b7e38f59bea5f7",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "224fdd3795cf5456",
+    "type": "split",
+    "children": [
+      {
+        "id": "d4c90a9490acd19b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4713a581b4deef25",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "12-dev-guide/04-ui-pages.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for 04-ui-pages"
+            }
+          },
+          {
+            "id": "d12128f2eae2a621",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "12-dev-guide/04-ui-pages.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from 04-ui-pages"
+            }
+          },
+          {
+            "id": "2978c149208b9932",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "2578afa080faf627",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "724f1ce650459bf8",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "12-dev-guide/04-ui-pages.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of 04-ui-pages"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "3547456374f40c01",
+  "lastOpenFiles": [
+    "design-ui-figma.md"
+  ]
+}
