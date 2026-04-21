@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   description: 'Hệ thống đặt vé máy bay và tàu hỏa trực tuyến',
 }
 
+export const dynamic = 'force-dynamic';
+
+
 export default function RootLayout({
   children,
 }: {
