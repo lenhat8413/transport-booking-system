@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -84,6 +84,93 @@ function FilterCheckbox({ label, count, checked, onChange }: { label: string, co
       </span>
       <span className="rounded-full bg-white px-2.5 py-1 text-[0.7rem] font-bold text-slate-500 shadow-sm">{count}</span>
     </label>
+  );
+}
+
+type FilterPanelProps = {
+  type: SearchType;
+  searchHeroTheme: (typeof SEARCH_HERO_BY_TYPE)[SearchType];
+  minPrice: string;
+  maxPrice: string;
+  setMinPrice: (value: string) => void;
+  setMaxPrice: (value: string) => void;
+  carrierOptions: Array<{ code: string; label: string; count: number }>;
+  selectedAirlines: string[];
+  setSelectedAirlines: Dispatch<SetStateAction<string[]>>;
+  baseFilterCounts: FilterCounts;
+  selectedTimes: string[];
+  setSelectedTimes: Dispatch<SetStateAction<string[]>>;
+  resetFilters: () => void;
+  handleApplyFilter: () => void;
+  onApplyComplete?: () => void;
+};
+
+function FilterPanel({
+  type,
+  searchHeroTheme,
+  minPrice,
+  maxPrice,
+  setMinPrice,
+  setMaxPrice,
+  carrierOptions,
+  selectedAirlines,
+  setSelectedAirlines,
+  baseFilterCounts,
+  selectedTimes,
+  setSelectedTimes,
+  resetFilters,
+  handleApplyFilter,
+  onApplyComplete,
+}: FilterPanelProps) {
+  return (
+    <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-5 shadow-sm backdrop-blur-sm md:p-6">
+      <div className="flex items-center gap-3">
+        <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}><SlidersHorizontal className="h-[18px] w-[18px]" /></span>
+        <div><h2 className="text-[1.15rem] font-black text-slate-900 md:text-[1.28rem]">Bộ lọc</h2><p className="text-sm leading-6 text-slate-500">Tinh chỉnh kết quả</p></div>
+      </div>
+
+      <div className="mt-5 space-y-5 md:mt-6 md:space-y-6">
+        <div className="rounded-[20px] border border-slate-200 bg-slate-50/75 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-black text-slate-800">Khoảng giá</p>
+            <span className={`rounded-full px-2.5 py-1 text-[0.7rem] font-bold ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}>VND</span>
+          </div>
+          <div className="mt-3 grid gap-3">
+            <input type="number" placeholder="Giá thấp nhất" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full rounded-[16px] border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-sky-300" />
+            <input type="number" placeholder="Giá cao nhất" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full rounded-[16px] border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-sky-300" />
+          </div>
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-black text-slate-800">{type === "flight" ? "Hãng bay" : "Mã tàu"}</p>
+            {carrierOptions.length > 0 && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.7rem] font-bold text-slate-500">{carrierOptions.length}</span>}
+          </div>
+          <div className="mt-3 max-h-[220px] space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 md:max-h-[250px]">
+            {carrierOptions.map((item) => (
+              <FilterCheckbox key={item.code} label={item.label} count={item.count} checked={selectedAirlines.includes(item.code)} onChange={() => setSelectedAirlines((prev) => prev.includes(item.code) ? prev.filter((v) => v !== item.code) : [...prev, item.code])} />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-black text-slate-800">Khung giờ</p>
+            <span className={`rounded-full px-2.5 py-1 text-[0.7rem] font-bold ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}>4 mốc</span>
+          </div>
+          <div className="mt-3 space-y-3">
+            {timeRanges.map((item) => (
+              <FilterCheckbox key={item.id} label={item.label} count={baseFilterCounts.departure_time?.[item.id] || 0} checked={selectedTimes.includes(item.id)} onChange={() => setSelectedTimes((prev) => prev.includes(item.id) ? prev.filter((v) => v !== item.id) : [...prev, item.id])} />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={() => { resetFilters(); onApplyComplete?.(); }} className="flex-1 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">Đặt lại</button>
+          <button type="button" onClick={() => { handleApplyFilter(); onApplyComplete?.(); }} className={`flex-1 rounded-full px-4 py-3 text-sm font-bold text-slate-950 ${searchHeroTheme.accentButton}`}>Áp dụng</button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -186,6 +273,7 @@ function SearchResults() {
   const [searchSeatClass, setSearchSeatClass] = useState(seatClass);
   const [tripKind, setTripKind] = useState<"one_way" | "round_trip">("one_way");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [userAvatar, setUserAvatar] = useState("/images/icons/icons8-user-male-64.png");
   const searchHeroTheme = SEARCH_HERO_BY_TYPE[searchType];
 
@@ -204,6 +292,7 @@ function SearchResults() {
   const [maxPrice, setMaxPrice] = useState(searchParams.get("max_price") || "");
   const [selectedAirlines, setSelectedAirlines] = useState<string[]>(searchParams.get("airlines")?.split(",").filter(Boolean) || []);
   const [selectedTimes, setSelectedTimes] = useState<string[]>(searchParams.get("times")?.split(",").filter(Boolean) || []);
+  const hasMountedAutoFilterRef = useRef(false);
 
   const endpointBase = searchType === "flight" ? "/flights/search" : "/train-trips/search";
   const locationEndpoint = searchType === "flight" ? "/flights/locations" : "/train-trips/locations";
@@ -234,7 +323,10 @@ function SearchResults() {
   const updateURL = (next: Record<string, string | number | null>) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(next).forEach(([key, value]) => { if (!value) params.delete(key); else params.set(key, String(value)); });
-    router.push(`${pathname}?${params.toString()}`);
+    const currentQuery = searchParams.toString();
+    const nextQuery = params.toString();
+    if (nextQuery === currentQuery) return;
+    router.push(`${pathname}?${nextQuery}`);
   };
 
   const handleSearchSubmit = () => updateURL({ type: searchType, origin: searchOrigin, destination: searchDest, departure_date: searchDate, passengers: searchPassengers, seat_class: searchSeatClass, min_price: "", max_price: "", airlines: "", times: "", time_from: "", time_to: "", page: 1, limit: DEFAULT_LIMIT });
@@ -242,7 +334,8 @@ function SearchResults() {
     setSearchType(nextType); setSearchOrigin(""); setSearchDest(""); setSearchDate(""); setReturnDate(""); setTripKind("one_way"); setMinPrice(""); setMaxPrice(""); setSelectedAirlines([]); setSelectedTimes([]);
     updateURL({ type: nextType, origin: "", destination: "", departure_date: "", return_date: "", min_price: "", max_price: "", airlines: "", times: "", time_from: "", time_to: "", page: 1, limit: DEFAULT_LIMIT });
   };
-  const handleApplyFilter = () => updateURL({ min_price: minPrice, max_price: maxPrice, airlines: selectedAirlines.join(","), times: selectedTimes.join(","), time_from: "", time_to: "", page: 1 });
+  const applyCurrentFilters = () => updateURL({ min_price: minPrice, max_price: maxPrice, airlines: selectedAirlines.join(","), times: selectedTimes.join(","), time_from: "", time_to: "", page: 1 });
+  const handleApplyFilter = () => applyCurrentFilters();
   const resetFilters = () => { setMinPrice(""); setMaxPrice(""); setSelectedAirlines([]); setSelectedTimes([]); updateURL({ min_price: "", max_price: "", airlines: "", times: "", time_from: "", time_to: "", page: 1 }); };
 
   useEffect(() => {
@@ -250,6 +343,19 @@ function SearchResults() {
     setMinPrice(searchParams.get("min_price") || ""); setMaxPrice(searchParams.get("max_price") || "");
     setSelectedAirlines(searchParams.get("airlines")?.split(",").filter(Boolean) || []); setSelectedTimes(searchParams.get("times")?.split(",").filter(Boolean) || []);
   }, [departureDate, destination, origin, passengers, searchParams, seatClass, type]);
+
+  useEffect(() => {
+    if (!hasMountedAutoFilterRef.current) {
+      hasMountedAutoFilterRef.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      applyCurrentFilters();
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [maxPrice, minPrice, selectedAirlines, selectedTimes]);
 
   useEffect(() => {
     if (!loggedIn) { setUserAvatar("/images/icons/icons8-user-male-64.png"); return; }
@@ -396,56 +502,56 @@ function SearchResults() {
         </section>
 
         {/* RESULTS AND FILTER GRID */}
-        <div className="mt-7 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
-          <aside className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-2 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
-            <section className="rounded-[24px] border border-slate-200/90 bg-white/95 p-6 shadow-sm backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}><SlidersHorizontal className="h-[18px] w-[18px]" /></span>
-                <div><h2 className="text-[1.28rem] font-black text-slate-900">Bộ lọc</h2><p className="text-sm leading-6 text-slate-500">Tinh chỉnh kết quả</p></div>
-              </div>
+        <div className="mt-4 lg:hidden">
+          <button type="button" onClick={() => setMobileFilterOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm">
+            <SlidersHorizontal className="h-4 w-4" />
+            Mở bộ lọc
+          </button>
+        </div>
 
-              <div className="mt-6 space-y-6">
-                <div className="rounded-[20px] border border-slate-200 bg-slate-50/75 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-black text-slate-800">Khoảng giá</p>
-                    <span className={`rounded-full px-2.5 py-1 text-[0.7rem] font-bold ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}>VND</span>
-                  </div>
-                  <div className="mt-3 grid gap-3">
-                    <input type="number" placeholder="Giá thấp nhất" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="rounded-[16px] border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none" />
-                    <input type="number" placeholder="Giá cao nhất" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="rounded-[16px] border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none" />
-                  </div>
-                </div>
+        {mobileFilterOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button type="button" aria-label="Đóng bộ lọc" onClick={() => setMobileFilterOpen(false)} className="absolute inset-0 bg-slate-900/35" />
+            <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-[26px] bg-[#f2f7fc] p-3 pb-5">
+              <FilterPanel
+                type={type}
+                searchHeroTheme={searchHeroTheme}
+                minPrice={minPrice}
+                maxPrice={maxPrice}
+                setMinPrice={setMinPrice}
+                setMaxPrice={setMaxPrice}
+                carrierOptions={carrierOptions}
+                selectedAirlines={selectedAirlines}
+                setSelectedAirlines={setSelectedAirlines}
+                baseFilterCounts={baseFilterCounts}
+                selectedTimes={selectedTimes}
+                setSelectedTimes={setSelectedTimes}
+                resetFilters={resetFilters}
+                handleApplyFilter={handleApplyFilter}
+                onApplyComplete={() => setMobileFilterOpen(false)}
+              />
+            </div>
+          </div>
+        )}
 
-                <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-black text-slate-800">{type === "flight" ? "Hãng bay" : "Mã tàu"}</p>
-                    {carrierOptions.length > 0 && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.7rem] font-bold text-slate-500">{carrierOptions.length}</span>}
-                  </div>
-                  <div className="mt-3 space-y-3 max-h-[250px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                    {carrierOptions.map((item) => (
-                      <FilterCheckbox key={item.code} label={item.label} count={item.count} checked={selectedAirlines.includes(item.code)} onChange={() => setSelectedAirlines((prev) => prev.includes(item.code) ? prev.filter((v) => v !== item.code) : [...prev, item.code])} />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-black text-slate-800">Khung giờ</p>
-                    <span className={`rounded-full px-2.5 py-1 text-[0.7rem] font-bold ${searchHeroTheme.accentSurface} ${searchHeroTheme.accentText}`}>4 mốc</span>
-                  </div>
-                  <div className="mt-3 space-y-3">
-                    {timeRanges.map((item) => (
-                      <FilterCheckbox key={item.id} label={item.label} count={baseFilterCounts.departure_time?.[item.id] || 0} checked={selectedTimes.includes(item.id)} onChange={() => setSelectedTimes((prev) => prev.includes(item.id) ? prev.filter((v) => v !== item.id) : [...prev, item.id])} />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={resetFilters} className="flex-1 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">Đặt lại</button>
-                  <button type="button" onClick={handleApplyFilter} className={`flex-1 rounded-full px-4 py-3 text-sm font-bold text-slate-950 ${searchHeroTheme.accentButton}`}>Áp dụng</button>
-                </div>
-              </div>
-            </section>
+        <div className="mt-3 grid gap-5 items-start lg:mt-7 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden lg:block lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-2 lg:pb-4 lg:[&::-webkit-scrollbar]:w-1.5 lg:[&::-webkit-scrollbar-thumb]:rounded-full lg:[&::-webkit-scrollbar-thumb]:bg-slate-300">
+            <FilterPanel
+              type={type}
+              searchHeroTheme={searchHeroTheme}
+              minPrice={minPrice}
+              maxPrice={maxPrice}
+              setMinPrice={setMinPrice}
+              setMaxPrice={setMaxPrice}
+              carrierOptions={carrierOptions}
+              selectedAirlines={selectedAirlines}
+              setSelectedAirlines={setSelectedAirlines}
+              baseFilterCounts={baseFilterCounts}
+              selectedTimes={selectedTimes}
+              setSelectedTimes={setSelectedTimes}
+              resetFilters={resetFilters}
+              handleApplyFilter={handleApplyFilter}
+            />
           </aside>
 
           <main className="space-y-5 pb-8">
