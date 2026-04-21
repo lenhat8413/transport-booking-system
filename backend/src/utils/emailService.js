@@ -25,8 +25,11 @@ const createTransporter = () =>
 const sendPasswordResetEmail = async (to, otp) => {
 	const expiryMinutes = env.otpExpiryMinutes;
 
-	// Dùng smtpUser làm địa chỉ gửi để khớp tài khoản xác thực SMTP
-	const fromAddress = env.smtpUser || env.emailFrom;
+	// Dùng SMTP_USER làm địa chỉ gửi để không cần config EMAIL_FROM
+	const fromAddress = env.smtpUser;
+	if (!fromAddress) {
+		throw new Error("SMTP_USER is required to send emails.");
+	}
 
 	const transporter = createTransporter();
 

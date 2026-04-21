@@ -123,9 +123,16 @@ async function refreshToken({ refreshToken }) {
 // FORGOT PASSWORD
 // ─────────────────────────────────────────
 async function forgotPassword({ email }) {
-  if (!email) throw new AuthServiceError("Email is required.", 400);
+  const safeEmail = typeof email === "string" ? email.trim() : "";
+  const safePhone = typeof arguments?.[0]?.phone === "string" ? arguments[0].phone.trim() : "";
 
-  const user = await User.findOne({ email });
+  if (!safeEmail && !safePhone) {
+    throw new AuthServiceError("Email or phone is required.", 400);
+  }
+
+  const user = await User.findOne(
+    safeEmail ? { email: safeEmail } : { phone: safePhone },
+  );
 
   const otp = String(crypto.randomInt(100000, 1000000));
   const otpHash = await bcrypt.hash(otp, 10);
