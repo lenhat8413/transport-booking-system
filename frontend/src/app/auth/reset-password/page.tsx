@@ -14,6 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import config from "@/config";
 
 export default function ResetPasswordPage() {
 	const router = useRouter();
@@ -96,9 +97,8 @@ export default function ResetPasswordPage() {
 				? { email: contactValue, otp, new_password, confirm_password } 
 				: { phone: contactValue, otp, new_password, confirm_password };
 
-      console.log(payload);
 			const response = await axios.post(
-				`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`,
+				`${config.apiBaseUrl}/auth/reset-password`,
 				payload
 			);
 
