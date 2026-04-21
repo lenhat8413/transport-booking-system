@@ -121,6 +121,7 @@ export default function SeatMapPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
   const [pendingSeatIds, setPendingSeatIds] = useState<Set<string>>(new Set());
 
@@ -130,6 +131,18 @@ export default function SeatMapPage() {
   const selectedIdsRef = useRef(selectedIds);
   const pendingSeatIdsRef = useRef(pendingSeatIds);
   const holdExpiredHandledRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getValidAccessToken().then((token) => {
+      if (!cancelled) {
+        setIsAuthenticated(Boolean(token));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -347,13 +360,30 @@ export default function SeatMapPage() {
     if (pendingSeatIdsRef.current.has(seat._id)) return;
 
     const isSelected = selectedIdsRef.current.has(seat._id);
-    if (!isSelected && seat.status === "BOOKED") {
+    if (!isSelected && seat.status !== "AVAILABLE") {
       return;
     }
 
     const token = await getValidAccessToken();
+    const hasToken = Boolean(token);
+    setIsAuthenticated(hasToken);
+
+    // Guest mode: cho phép chọn ghế trực tiếp ở client, booking sẽ kiểm tra ghế lại ở bước continue.
+    if (!hasToken) {
+      setApiError(null);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(seat._id)) {
+          next.delete(seat._id);
+        } else {
+          next.add(seat._id);
+        }
+        return next;
+      });
+      return;
+    }
+
     if (!token) {
-      setApiError("Bạn cần đăng nhập để giữ ghế.");
       return;
     }
 
@@ -460,50 +490,56 @@ export default function SeatMapPage() {
     setIsProcessing(true);
     setApiError(null);
     const token = await getValidAccessToken();
-    if (!token) {
-      setApiError("Bạn cần đăng nhập để đặt ghế.");
-      setIsProcessing(false);
-      return;
-    }
+    const hasToken = Boolean(token);
+    setIsAuthenticated(hasToken);
 
     try {
-      // Bước 1: Chọn ghế (hold seats)
-      const selectRes = await fetch(`${API_BASE}/seats/select`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ tripId, seatIds: [...selectedIds] }),
-      });
+      let confirmedSeats: Seat[] = seats.filter((seat) => selectedIds.has(seat._id));
 
-      const selectJson = await selectRes.json();
-      if (!selectRes.ok) {
-        setApiError(selectJson.message ?? "Đặt ghế thất bại. Vui lòng thử lại.");
-        setIsProcessing(false);
-        return;
+      // User đã đăng nhập: giữ luồng select/hod cũ để lock ghế realtime.
+      if (hasToken) {
+        const selectRes = await fetch(`${API_BASE}/seats/select`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ tripId, seatIds: [...selectedIds] }),
+        });
+
+        const selectJson = await selectRes.json();
+        if (!selectRes.ok) {
+          setApiError(selectJson.message ?? "Đặt ghế thất bại. Vui lòng thử lại.");
+          setIsProcessing(false);
+          return;
+        }
+
+        const confirmed: Seat[] = selectJson.data?.selectedSeats ?? [];
+        confirmedSeats = confirmed;
+        setSeats((prev) =>
+          prev.map((seat) => {
+            const updated = confirmed.find((item) => item._id === seat._id);
+            return updated ? { ...updated } : seat;
+          })
+        );
       }
 
-      const confirmed: Seat[] = selectJson.data?.selectedSeats ?? [];
-      setSeats((prev) =>
-        prev.map((seat) => {
-          const updated = confirmed.find((item) => item._id === seat._id);
-          return updated ? { ...updated } : seat;
-        })
-      );
-
       // Bước 2: Tạo booking với các ghế đã chọn
+      const bookingHeaders: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        bookingHeaders.Authorization = `Bearer ${token}`;
+      }
+
       const bookingRes = await fetch(`${API_BASE}/bookings/create`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: bookingHeaders,
         body: JSON.stringify({
           trip_id: tripId,
           booking_type: normalizedTripType,
           seats: [...selectedIds],
-          passengers: confirmed.map((seat) => ({
+          passengers: confirmedSeats.map((seat) => ({
             seat_id: seat._id,
             passenger_name: "", // Sẽ được điền ở trang passenger info
             passenger_id_card: "",
@@ -531,7 +567,7 @@ export default function SeatMapPage() {
         return;
       }
 
-      // Bước 3: Redirect sang trang nhập thông tin hành khách
+      // Bước 3: Redirect sang trang nhập thông tin hành khách (bắt buộc hoàn thiện thông tin tại đây)
       window.location.href = `/user/booking/passenger-info?bookingId=${bookingId}`;
     } catch {
       setApiError("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
@@ -818,6 +854,23 @@ export default function SeatMapPage() {
                 >
                   <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "0.5rem" }} />
                   {apiError}
+                </div>
+              )}
+
+              {!isAuthenticated && (
+                <div
+                  style={{
+                    background: "#eff6ff",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "8px",
+                    padding: "0.75rem 1rem",
+                    marginBottom: "1rem",
+                    color: "#1d4ed8",
+                    fontSize: "0.86rem",
+                  }}
+                >
+                  <i className="fa-solid fa-circle-info" style={{ marginRight: "0.5rem" }} />
+                  Bạn đang đặt vé với tư cách khách vãng lai. Thông tin liên hệ sẽ được yêu cầu ở bước tiếp theo.
                 </div>
               )}
 

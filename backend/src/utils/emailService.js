@@ -83,11 +83,7 @@ const sendBookingPaymentSuccessEmail = async ({
 		throw new Error("Recipient email is required.");
 	}
 
-	// Dùng SMTP_USER làm địa chỉ gửi để không cần config EMAIL_FROM
-	const fromAddress = env.smtpUser;
-	if (!fromAddress) {
-		throw new Error("SMTP_USER is required to send emails.");
-	}
+	const fromAddress = env.smtpUser || env.emailFrom;
 	const transporter = createTransporter();
 
 	const departureText = departureTime ? new Date(departureTime).toLocaleString("vi-VN") : "";

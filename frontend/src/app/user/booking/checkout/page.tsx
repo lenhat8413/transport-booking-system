@@ -34,15 +34,20 @@ function CheckoutContent() {
     }
 
     setBookingId(bookingId);
+    const hasMatchingStoreData =
+      Boolean(storeData) && storeData?.booking_summary?.id === bookingId;
 
-    if (storeData) {
+    if (hasMatchingStoreData) {
       setBooking(storeData);
       setLoading(false);
+      return () => {
+        cancelled = true;
+      };
     }
 
     (async () => {
       try {
-        if (!cancelled && !storeData) setLoading(true);
+        if (!cancelled) setLoading(true);
         const data = await getBookingDetails(bookingId);
         if (!cancelled) {
           setBooking(data);
